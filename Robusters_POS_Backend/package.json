@@ -1,0 +1,29 @@
+{
+  "name": "robusters_pos_backend",
+  "version": "1.0.0",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "db:init": "node src/database/init.js",
+    "db:seed": "node src/database/seed.js"
+  },
+  "keywords": ["pos", "restaurant", "backend"],
+  "author": "Robusters",
+  "license": "ISC",
+  "description": "Restaurant POS System Backend",
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "express-validator": "^7.3.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "morgan": "^1.10.1",
+    "pg": "^8.17.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  }
+}
