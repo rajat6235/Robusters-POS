@@ -6,6 +6,7 @@
 
 const { Pool } = require('pg');
 require('dotenv').config();
+const { createMenuSchema } = require('./migrations/002_menu_schema');
 
 const config = {
   host: process.env.DB_HOST || 'localhost',
@@ -93,9 +94,13 @@ async function initDatabase() {
       database: dbName,
     });
 
-    console.log('Creating tables...');
+    console.log('Creating user tables...');
     await appPool.query(createTablesSQL);
-    console.log('Tables created successfully.');
+    console.log('User tables created successfully.');
+
+    console.log('Creating menu tables...');
+    await appPool.query(createMenuSchema);
+    console.log('Menu tables created successfully.');
 
     await appPool.end();
     console.log('\nDatabase initialization complete!');
