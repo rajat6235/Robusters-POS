@@ -15,6 +15,9 @@ const pool = new Pool({
   user: config.db.user,
   password: config.db.password,
 
+  // SSL configuration (required for Neon and most cloud databases)
+  ssl: config.db.ssl ? { rejectUnauthorized: false } : false,
+
   // Pool configuration
   max: 20, // Maximum connections in pool
   idleTimeoutMillis: 30000, // Close idle connections after 30s

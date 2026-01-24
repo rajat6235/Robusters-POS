@@ -7,16 +7,20 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 const { createMenuSchema } = require('./migrations/002_menu_schema');
+const { createOrderSchema } = require('./migrations/003_order_schema');
+const { createCustomerTables } = require('./migrations/004_customer_system');
+
+const useSSL = process.env.DB_SSL === 'true';
+const dbName = process.env.DB_NAME || 'robusters_pos';
 
 const config = {
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT, 10) || 5432,
   user: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || '',
-  database: 'postgres', // Connect to default db first
+  database: dbName, // Connect directly to the target database (required for Neon)
+  ssl: useSSL ? { rejectUnauthorized: false } : false,
 };
-
-const dbName = process.env.DB_NAME || 'robusters_pos';
 
 // SQL to create tables
 const createTablesSQL = `
@@ -71,38 +75,29 @@ async function initDatabase() {
   const pool = new Pool(config);
 
   try {
-    // Check if database exists
-    const dbCheck = await pool.query(
-      `SELECT 1 FROM pg_database WHERE datname = $1`,
-      [dbName]
-    );
+    console.log(`Connecting to database: ${dbName}...`);
 
-    if (dbCheck.rows.length === 0) {
-      // Create database if it doesn't exist
-      console.log(`Creating database: ${dbName}...`);
-      await pool.query(`CREATE DATABASE ${dbName}`);
-      console.log(`Database ${dbName} created successfully.`);
-    } else {
-      console.log(`Database ${dbName} already exists.`);
-    }
-
-    await pool.end();
-
-    // Connect to the new database and create tables
-    const appPool = new Pool({
-      ...config,
-      database: dbName,
-    });
+    // Test connection
+    const result = await pool.query('SELECT NOW()');
+    console.log(`Connected successfully at: ${result.rows[0].now}`);
 
     console.log('Creating user tables...');
-    await appPool.query(createTablesSQL);
+    await pool.query(createTablesSQL);
     console.log('User tables created successfully.');
 
     console.log('Creating menu tables...');
-    await appPool.query(createMenuSchema);
+    await pool.query(createMenuSchema);
     console.log('Menu tables created successfully.');
 
-    await appPool.end();
+    console.log('Creating order tables...');
+    await pool.query(createOrderSchema);
+    console.log('Order tables created successfully.');
+
+    console.log('Creating customer tables...');
+    await createCustomerTables(pool);
+    console.log('Customer tables created successfully.');
+
+    await pool.end();
     console.log('\nDatabase initialization complete!');
     console.log('You can now run: npm run db:seed');
 

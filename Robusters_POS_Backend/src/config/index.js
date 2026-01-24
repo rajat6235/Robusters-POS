@@ -18,6 +18,7 @@ const config = {
     name: process.env.DB_NAME || 'robusters_pos',
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || '',
+    ssl: process.env.DB_SSL === 'true',
   },
 
   // JWT
