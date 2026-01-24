@@ -108,6 +108,69 @@ const updateActiveStatus = async (id, isActive) => {
 };
 
 /**
+ * Update user details
+ * @param {string} id - User's UUID
+ * @param {Object} userData - Data to update
+ * @param {string} userData.firstName - First name
+ * @param {string} userData.lastName - Last name
+ * @param {string} userData.email - Email
+ * @param {string} userData.role - Role
+ * @param {string} userData.password - New password (optional)
+ * @returns {Promise<Object|null>} Updated user or null
+ */
+const update = async (id, { firstName, lastName, email, role, password }) => {
+  // Build dynamic update query
+  const updates = [];
+  const values = [];
+  let paramIndex = 1;
+
+  if (firstName !== undefined) {
+    updates.push(`first_name = $${paramIndex}`);
+    values.push(firstName);
+    paramIndex++;
+  }
+
+  if (lastName !== undefined) {
+    updates.push(`last_name = $${paramIndex}`);
+    values.push(lastName);
+    paramIndex++;
+  }
+
+  if (email !== undefined) {
+    updates.push(`email = $${paramIndex}`);
+    values.push(email.toLowerCase());
+    paramIndex++;
+  }
+
+  if (role !== undefined) {
+    updates.push(`role = $${paramIndex}`);
+    values.push(role);
+    paramIndex++;
+  }
+
+  if (password) {
+    const passwordHash = await hashPassword(password);
+    updates.push(`password_hash = $${paramIndex}`);
+    values.push(passwordHash);
+    paramIndex++;
+  }
+
+  if (updates.length === 0) {
+    return findById(id);
+  }
+
+  values.push(id);
+
+  const result = await db.query(
+    `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramIndex}
+     RETURNING id, email, first_name, last_name, role, is_active, created_at`,
+    values
+  );
+
+  return result.rows[0] || null;
+};
+
+/**
  * Check if any user exists (for initial setup)
  * @returns {Promise<boolean>} True if at least one user exists
  */
@@ -121,6 +184,7 @@ module.exports = {
   findByEmail,
   findById,
   create,
+  update,
   updateLastLogin,
   findAll,
   updateActiveStatus,

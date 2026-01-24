@@ -203,13 +203,6 @@ function MenuManagementContent() {
           </Button>
         </div>
       </div>
-            <Plus className="h-4 w-4 mr-2" />Category
-          </Button>
-          <Button onClick={() => { resetForms(); setSelectedCategoryId(categories[0]?.id || ''); setShowItemDialog(true); }}>
-            <Plus className="h-4 w-4 mr-2" />Item
-          </Button>
-        </div>
-      </div>
 
       <Tabs defaultValue={categories[0]?.id}>
         <TabsList className="flex-wrap h-auto">

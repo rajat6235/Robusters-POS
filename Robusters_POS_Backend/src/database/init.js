@@ -9,6 +9,7 @@ require('dotenv').config();
 const { createMenuSchema } = require('./migrations/002_menu_schema');
 const { createOrderSchema } = require('./migrations/003_order_schema');
 const { createCustomerTables } = require('./migrations/004_customer_system');
+const { createActivityLogSchema } = require('./migrations/005_activity_log');
 
 const useSSL = process.env.DB_SSL === 'true';
 const dbName = process.env.DB_NAME || 'robusters_pos';
@@ -96,6 +97,10 @@ async function initDatabase() {
     console.log('Creating customer tables...');
     await createCustomerTables(pool);
     console.log('Customer tables created successfully.');
+
+    console.log('Creating activity log tables...');
+    await pool.query(createActivityLogSchema);
+    console.log('Activity log tables created successfully.');
 
     await pool.end();
     console.log('\nDatabase initialization complete!');

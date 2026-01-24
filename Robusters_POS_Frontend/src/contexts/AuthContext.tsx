@@ -6,7 +6,7 @@ import { authService } from '@/services/authService';
 
 interface AuthContextType extends AuthState {
   login: (credentials: LoginCredentials) => Promise<{ success: boolean; error?: string }>;
-  logout: () => void;
+  logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
@@ -84,7 +84,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    // Call backend logout endpoint to log the activity
+    try {
+      await authService.logout();
+    } catch (error) {
+      // Silently fail - we still want to logout locally even if the server call fails
+      console.error('Failed to log logout activity:', error);
+    }
+
     localStorage.removeItem(TOKEN_KEY);
     setState({
       user: null,

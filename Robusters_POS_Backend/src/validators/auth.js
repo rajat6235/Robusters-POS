@@ -68,6 +68,46 @@ const registerRules = [
 ];
 
 /**
+ * Validation rules for updating a user (admin only)
+ */
+const updateUserRules = [
+  body('email')
+    .optional()
+    .trim()
+    .isEmail()
+    .withMessage('Invalid email format')
+    .normalizeEmail(),
+
+  body('password')
+    .optional()
+    .isLength({ min: 8 })
+    .withMessage('Password must be at least 8 characters')
+    .matches(/[A-Z]/)
+    .withMessage('Password must contain at least one uppercase letter')
+    .matches(/[a-z]/)
+    .withMessage('Password must contain at least one lowercase letter')
+    .matches(/[0-9]/)
+    .withMessage('Password must contain at least one number'),
+
+  body('firstName')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 100 })
+    .withMessage('First name must be 2-100 characters'),
+
+  body('lastName')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 100 })
+    .withMessage('Last name must be 2-100 characters'),
+
+  body('role')
+    .optional()
+    .isIn(['ADMIN', 'MANAGER'])
+    .withMessage('Role must be ADMIN or MANAGER'),
+];
+
+/**
  * Middleware to check validation results
  * Throws ValidationError if there are errors
  */
@@ -89,5 +129,6 @@ const validate = (req, res, next) => {
 module.exports = {
   loginRules,
   registerRules,
+  updateUserRules,
   validate,
 };

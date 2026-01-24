@@ -8,7 +8,7 @@ const router = express.Router();
 
 const authController = require('../controllers/authController');
 const { authenticate, adminOnly } = require('../middleware/auth');
-const { loginRules, registerRules, validate } = require('../validators/auth');
+const { loginRules, registerRules, updateUserRules, validate } = require('../validators/auth');
 
 /**
  * @route   POST /api/auth/login
@@ -16,6 +16,13 @@ const { loginRules, registerRules, validate } = require('../validators/auth');
  * @access  Public
  */
 router.post('/login', loginRules, validate, authController.login);
+
+/**
+ * @route   POST /api/auth/logout
+ * @desc    Logout user and log activity
+ * @access  Private
+ */
+router.post('/logout', authenticate, authController.logout);
 
 /**
  * @route   POST /api/auth/register
@@ -37,6 +44,13 @@ router.get('/me', authenticate, authController.getProfile);
  * @access  Private (Admin)
  */
 router.get('/users', authenticate, adminOnly, authController.getAllUsers);
+
+/**
+ * @route   PUT /api/auth/users/:id
+ * @desc    Update a user
+ * @access  Private (Admin)
+ */
+router.put('/users/:id', authenticate, adminOnly, updateUserRules, validate, authController.updateUser);
 
 /**
  * @route   PATCH /api/auth/users/:id/deactivate

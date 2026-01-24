@@ -13,6 +13,8 @@ import {
   Menu,
   X,
   ChefHat,
+  Shield,
+  History,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -59,7 +61,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
 
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'ADMIN';
 
   const navItems = [
     { href: '/dashboard', icon: <LayoutDashboard className="h-5 w-5" />, label: 'Dashboard' },
@@ -68,7 +70,11 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   ];
 
   if (isAdmin) {
-    navItems.push({ href: '/menu', icon: <UtensilsCrossed className="h-5 w-5" />, label: 'Menu Management' });
+    navItems.push(
+      { href: '/menu', icon: <UtensilsCrossed className="h-5 w-5" />, label: 'Menu Management' },
+      { href: '/users', icon: <Shield className="h-5 w-5" />, label: 'User Management' },
+      { href: '/activity-log', icon: <History className="h-5 w-5" />, label: 'Activity Log' }
+    );
   }
 
   return (
@@ -111,8 +117,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
           <div className="border-t p-4">
             <div className="mb-3 rounded-lg bg-muted p-3">
-              <p className="text-sm font-medium">{user?.name}</p>
-              <p className="text-xs text-muted-foreground capitalize">{user?.role}</p>
+              <p className="text-sm font-medium">{user?.firstName} {user?.lastName}</p>
+              <p className="text-xs text-muted-foreground">{user?.role}</p>
             </div>
             <Button
               variant="outline"
@@ -160,8 +166,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
           <div className="border-t p-4">
             <div className="mb-3 rounded-lg bg-muted p-3">
-              <p className="text-sm font-medium">{user?.name}</p>
-              <p className="text-xs text-muted-foreground capitalize">{user?.role}</p>
+              <p className="text-sm font-medium">{user?.firstName} {user?.lastName}</p>
+              <p className="text-xs text-muted-foreground">{user?.role}</p>
             </div>
             <Button
               variant="outline"

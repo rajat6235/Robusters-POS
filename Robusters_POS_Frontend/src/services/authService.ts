@@ -18,6 +18,14 @@ export interface RegisterRequest {
   role: 'ADMIN' | 'MANAGER';
 }
 
+export interface UpdateUserRequest {
+  email?: string;
+  password?: string;
+  firstName?: string;
+  lastName?: string;
+  role?: 'ADMIN' | 'MANAGER';
+}
+
 export interface RegisterResponse {
   success: boolean;
   data: {
@@ -73,6 +81,18 @@ export const authService = {
   // Activate user (Admin only)
   async activateUser(userId: string): Promise<{ success: boolean; message: string }> {
     const response = await apiClient.patch<{ success: boolean; message: string }>(`/auth/users/${userId}/activate`);
+    return response.data;
+  },
+
+  // Update user (Admin only)
+  async updateUser(userId: string, userData: UpdateUserRequest): Promise<{ success: boolean; data: { user: User }; message: string }> {
+    const response = await apiClient.put<{ success: boolean; data: { user: User }; message: string }>(`/auth/users/${userId}`, userData);
+    return response.data;
+  },
+
+  // Logout user
+  async logout(): Promise<{ success: boolean; message: string }> {
+    const response = await apiClient.post<{ success: boolean; message: string }>('/auth/logout');
     return response.data;
   },
 };
