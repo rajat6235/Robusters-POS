@@ -15,13 +15,19 @@ const pool = new Pool({
   user: config.db.user,
   password: config.db.password,
 
-  // SSL configuration (required for Neon and most cloud databases)
+  // SSL configuration (required for Render and most cloud databases)
   ssl: config.db.ssl ? { rejectUnauthorized: false } : false,
 
-  // Pool configuration
-  max: 20, // Maximum connections in pool
-  idleTimeoutMillis: 30000, // Close idle connections after 30s
-  connectionTimeoutMillis: 5000, // Fail if can't connect in 5s
+  // Pool configuration - optimized for cloud databases
+  max: 10, // Reduced max connections for cloud database limits
+  min: 2, // Keep minimum connections alive
+  idleTimeoutMillis: 20000, // Close idle connections after 20s (reduced)
+  connectionTimeoutMillis: 10000, // Increased timeout for cloud latency
+  acquireTimeoutMillis: 10000, // Time to wait for connection from pool
+  
+  // Additional cloud database optimizations
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10000,
 });
 
 // Log pool errors (don't crash the app)
@@ -31,8 +37,16 @@ pool.on('error', (err) => {
 
 // Log when client is acquired (debug only)
 if (config.env === 'development') {
-  pool.on('connect', () => {
-    console.log('Database client connected');
+  pool.on('connect', (client) => {
+    console.log('Database client connected to:', config.db.host);
+  });
+  
+  pool.on('acquire', () => {
+    console.log('Client acquired from pool');
+  });
+  
+  pool.on('remove', () => {
+    console.log('Client removed from pool');
   });
 }
 

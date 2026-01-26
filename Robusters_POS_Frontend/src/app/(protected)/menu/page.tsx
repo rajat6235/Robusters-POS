@@ -167,7 +167,7 @@ function MenuManagementContent() {
     setShowItemDialog(true);
   };
 
-  if (isLoading && categories.length === 0) {
+  if (isLoading && (!categories || categories.length === 0)) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -204,14 +204,14 @@ function MenuManagementContent() {
         </div>
       </div>
 
-      <Tabs defaultValue={categories[0]?.id}>
+      <Tabs defaultValue={categories && categories.length > 0 ? categories[0].id : undefined}>
         <TabsList className="flex-wrap h-auto">
-          {categories.map((cat) => (
+          {categories && categories.map((cat) => (
             <TabsTrigger key={cat.id} value={cat.id}>{cat.name} ({cat.items?.length || 0})</TabsTrigger>
           ))}
         </TabsList>
 
-        {categories.map((cat) => (
+        {categories && categories.map((cat) => (
           <TabsContent key={cat.id} value={cat.id} className="mt-4">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-lg font-semibold">{cat.name}</h2>
@@ -274,7 +274,7 @@ function MenuManagementContent() {
         ))}
       </Tabs>
 
-      {categories.length === 0 && (
+      {(!categories || categories.length === 0) && !isLoading && (
         <div className="text-center py-12">
           <p className="text-muted-foreground mb-4">No categories found. Create your first category to get started.</p>
           <Button onClick={() => { resetForms(); setShowCategoryDialog(true); }}>
@@ -324,7 +324,7 @@ function MenuManagementContent() {
                 <SelectValue placeholder="Select category" />
               </SelectTrigger>
               <SelectContent>
-                {categories.map((c) => (
+                {categories && categories.map((c) => (
                   <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                 ))}
               </SelectContent>
@@ -380,7 +380,7 @@ function MenuManagementContent() {
 
 export default function MenuPage() {
   return (
-    <ProtectedRoute allowedRoles={['admin']}>
+    <ProtectedRoute allowedRoles={['ADMIN']}>
       <MenuManagementContent />
     </ProtectedRoute>
   );

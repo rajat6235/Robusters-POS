@@ -24,8 +24,8 @@ import {
 export const menuService = {
   // Get full menu (categories → items → variants → addons)
   async getPublicMenu(): Promise<MenuResponse> {
-    const response = await apiClient.get<MenuResponse>('/menu/public');
-    return response.data;
+    const response = await apiClient.get<{ success: boolean; data: { menu: MenuCategory[] } }>('/menu/public');
+    return { categories: response.data.data.menu };
   },
 
   // Calculate price for a single item configuration
