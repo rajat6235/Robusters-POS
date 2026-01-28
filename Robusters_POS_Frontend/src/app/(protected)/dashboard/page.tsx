@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useDashboard } from '@/hooks/useDashboard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   ShoppingCart,
@@ -9,6 +10,8 @@ import {
   TrendingUp,
   Users,
   ArrowRight,
+  RefreshCw,
+  Crown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -40,6 +43,30 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, description, icon, tr
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const { stats, weeklyTopCustomers, loading, error, refreshAll } = useDashboard();
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex items-center gap-2">
+          <RefreshCw className="h-4 w-4 animate-spin" />
+          <span>Loading dashboard...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <p className="text-red-500">{error}</p>
+        <Button onClick={refreshAll} variant="outline">
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Retry
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -53,48 +80,53 @@ export default function DashboardPage() {
             Here&apos;s what&apos;s happening at Robusters today.
           </p>
         </div>
-        <Link href="/orders">
-          <Button className="gap-2 touch-target">
-            <ShoppingCart className="h-4 w-4" />
-            New Order
-            <ArrowRight className="h-4 w-4" />
+        <div className="flex gap-2">
+          <Button onClick={refreshAll} variant="outline" size="sm">
+            <RefreshCw className="h-4 w-4" />
           </Button>
-        </Link>
+          <Link href="/orders">
+            <Button className="gap-2 touch-target">
+              <ShoppingCart className="h-4 w-4" />
+              New Order
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Stats Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Today's Orders"
-          value="24"
+          value={stats?.todayStats.totalOrders.toString() || '0'}
           description="orders placed today"
           icon={<ShoppingCart className="h-full w-full" />}
-          trend="+12%"
+          trend={stats?.trends.orders}
         />
         <StatCard
           title="Today's Revenue"
-          value="₹12,450"
+          value={`₹${stats?.todayStats.totalRevenue.toFixed(0) || '0'}`}
           description="from all orders"
           icon={<DollarSign className="h-full w-full" />}
-          trend="+8%"
+          trend={stats?.trends.revenue}
         />
         <StatCard
           title="Avg Order Value"
-          value="₹519"
+          value={`₹${stats?.todayStats.averageOrderValue.toFixed(0) || '0'}`}
           description="per transaction"
           icon={<TrendingUp className="h-full w-full" />}
         />
         <StatCard
           title="New Customers"
-          value="8"
+          value={stats?.todayStats.newCustomers.toString() || '0'}
           description="joined today"
           icon={<Users className="h-full w-full" />}
-          trend="+4"
+          trend={stats?.trends.customers}
         />
       </div>
 
       {/* Quick Actions */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle>Quick Actions</CardTitle>
@@ -121,25 +153,89 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {[
-                { id: '#1233', items: 'Grilled Chicken Salad', total: '₹280' },
-                { id: '#1232', items: 'Brown Rice Bowl x2', total: '₹480' },
-                { id: '#1231', items: 'Quinoa Salad', total: '₹320' },
-              ].map((order) => (
-                <div
-                  key={order.id}
-                  className="flex items-center justify-between rounded-lg bg-muted/50 p-3"
-                >
-                  <div>
-                    <p className="font-medium">{order.id}</p>
-                    <p className="text-sm text-muted-foreground">{order.items}</p>
+              {stats?.recentOrders && stats.recentOrders.length > 0 ? (
+                stats.recentOrders.map((order) => (
+                  <div
+                    key={order.id}
+                    className="flex items-center justify-between rounded-lg bg-muted/50 p-3"
+                  >
+                    <div>
+                      <p className="font-medium">{order.id}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {order.items.length > 50 
+                          ? `${order.items.substring(0, 50)}...` 
+                          : order.items}
+                      </p>
+                      {order.customerName && (
+                        <p className="text-xs text-muted-foreground">
+                          {order.customerName}
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <p className="font-medium">{order.total}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(order.createdAt).toLocaleTimeString()}
+                      </p>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-medium">{order.total}</p>
-                  </div>
+                ))
+              ) : (
+                <div className="text-center py-4 text-muted-foreground">
+                  No orders today yet
                 </div>
-              ))}
+              )}
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Crown className="h-5 w-5 text-yellow-500" />
+              Top Customers This Week
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {weeklyTopCustomers?.customers && weeklyTopCustomers.customers.length > 0 ? (
+                weeklyTopCustomers.customers.map((customer, index) => (
+                  <div
+                    key={customer.id}
+                    className="flex items-center justify-between rounded-lg bg-muted/50 p-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-sm font-medium">
+                        {index + 1}
+                      </div>
+                      <div>
+                        <p className="font-medium">
+                          {customer.firstName} {customer.lastName}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {customer.weeklyOrders} orders
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-medium">₹{customer.weeklySpent.toFixed(0)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {customer.loyaltyPoints} pts
+                      </p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-4 text-muted-foreground">
+                  No customers this week yet
+                </div>
+              )}
+            </div>
+            {weeklyTopCustomers?.dateRange && (
+              <div className="mt-3 pt-3 border-t text-xs text-muted-foreground text-center">
+                {new Date(weeklyTopCustomers.dateRange.startDate).toLocaleDateString()} - {new Date(weeklyTopCustomers.dateRange.endDate).toLocaleDateString()}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
