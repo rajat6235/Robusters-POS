@@ -5,15 +5,6 @@
 
 const db = require('../database/connection');
 
-// Valid order statuses
-const ORDER_STATUS = {
-  PENDING: 'PENDING',
-  PREPARING: 'PREPARING',
-  READY: 'READY',
-  COMPLETED: 'COMPLETED',
-  CANCELLED: 'CANCELLED',
-};
-
 // Valid payment methods
 const PAYMENT_METHODS = {
   CASH: 'CASH',
@@ -72,8 +63,8 @@ const create = async ({
     const orderResult = await client.query(
       `INSERT INTO orders (
         order_number, customer_phone, customer_name, subtotal, tax, total,
-        status, payment_method, payment_status, notes, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        payment_method, payment_status, notes, created_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *`,
       [
         orderNumber,
@@ -82,7 +73,6 @@ const create = async ({
         subtotal,
         tax,
         total,
-        ORDER_STATUS.PENDING,
         paymentMethod,
         PAYMENT_STATUS.PENDING,
         notes,
@@ -138,7 +128,6 @@ const create = async ({
 const findAll = async ({
   page = 1,
   limit = 20,
-  status,
   startDate,
   endDate,
   customerPhone,
@@ -147,12 +136,6 @@ const findAll = async ({
   const conditions = [];
   const values = [];
   let paramIndex = 1;
-  
-  if (status) {
-    conditions.push(`o.status = $${paramIndex}`);
-    values.push(status);
-    paramIndex++;
-  }
   
   if (startDate) {
     conditions.push(`DATE(o.created_at) >= $${paramIndex}`);
@@ -240,24 +223,6 @@ const findById = async (id) => {
     ...order,
     items: itemsResult.rows,
   };
-};
-
-/**
- * Update order status
- * @param {string} id - Order UUID
- * @param {string} status - New status
- * @returns {Promise<Object>} Updated order
- */
-const updateStatus = async (id, status) => {
-  const result = await db.query(
-    `UPDATE orders 
-     SET status = $1, updated_at = CURRENT_TIMESTAMP
-     WHERE id = $2
-     RETURNING *`,
-    [status, id]
-  );
-  
-  return result.rows[0];
 };
 
 /**
@@ -360,13 +325,11 @@ const getStats = async ({ startDate, endDate } = {}) => {
 };
 
 module.exports = {
-  ORDER_STATUS,
   PAYMENT_METHODS,
   PAYMENT_STATUS,
   create,
   findAll,
   findById,
-  updateStatus,
   updatePaymentStatus,
   getStats,
 };

@@ -65,7 +65,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
   const navItems = [
     { href: '/dashboard', icon: <LayoutDashboard className="h-5 w-5" />, label: 'Dashboard' },
-    { href: '/orders', icon: <ShoppingCart className="h-5 w-5" />, label: 'New Order' },
+    { href: '/orders', icon: <ShoppingCart className="h-5 w-5" />, label: 'Orders' },
     { href: '/customers', icon: <Users className="h-5 w-5" />, label: 'Customers' },
   ];
 
@@ -110,7 +110,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                 href={item.href}
                 icon={item.icon}
                 label={item.label}
-                isActive={pathname === item.href}
+                isActive={pathname === item.href || (item.href === '/orders' && pathname.startsWith('/orders'))}
               />
             ))}
           </nav>
@@ -158,7 +158,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                 href={item.href}
                 icon={item.icon}
                 label={item.label}
-                isActive={pathname === item.href}
+                isActive={pathname === item.href || (item.href === '/orders' && pathname.startsWith('/orders'))}
                 onClick={closeMobileMenu}
               />
             ))}

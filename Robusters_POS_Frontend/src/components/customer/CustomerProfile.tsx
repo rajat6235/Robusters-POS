@@ -284,11 +284,8 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                           <p className="text-sm text-muted-foreground">
                             {formatDate(order.created_at)}
                           </p>
-                          <Badge 
-                            variant={order.status === 'COMPLETED' ? 'default' : 'secondary'}
-                            className="mt-1"
-                          >
-                            {order.status}
+                          <Badge variant="secondary" className="mt-1">
+                            {new Date(order.created_at).toLocaleDateString()}
                           </Badge>
                         </div>
                         

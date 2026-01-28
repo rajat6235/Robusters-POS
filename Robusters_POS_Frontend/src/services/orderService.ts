@@ -28,7 +28,6 @@ export interface Order {
   subtotal: number;
   tax: number;
   total: number;
-  status: 'PENDING' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED';
   paymentMethod: 'CASH' | 'CARD' | 'UPI';
   paymentStatus: 'PENDING' | 'PAID' | 'FAILED';
   notes?: string;
@@ -69,7 +68,6 @@ export const orderService = {
   async getOrders(
     page = 1,
     limit = 20,
-    status?: Order['status'],
     startDate?: string,
     endDate?: string
   ): Promise<OrdersResponse> {
@@ -78,7 +76,6 @@ export const orderService = {
       limit: limit.toString(),
     });
 
-    if (status) params.append('status', status);
     if (startDate) params.append('startDate', startDate);
     if (endDate) params.append('endDate', endDate);
 
@@ -89,27 +86,6 @@ export const orderService = {
   // Get single order by ID
   async getOrder(orderId: string): Promise<{ success: boolean; data: { order: Order } }> {
     const response = await apiClient.get<{ success: boolean; data: { order: Order } }>(`/orders/${orderId}`);
-    return response.data;
-  },
-
-  // Update order status
-  async updateOrderStatus(
-    orderId: string,
-    status: Order['status']
-  ): Promise<{ success: boolean; data: { order: Order }; message: string }> {
-    const response = await apiClient.patch<{ success: boolean; data: { order: Order }; message: string }>(
-      `/orders/${orderId}/status`,
-      { status }
-    );
-    return response.data;
-  },
-
-  // Cancel order
-  async cancelOrder(orderId: string, reason?: string): Promise<{ success: boolean; message: string }> {
-    const response = await apiClient.patch<{ success: boolean; message: string }>(
-      `/orders/${orderId}/cancel`,
-      { reason }
-    );
     return response.data;
   },
 

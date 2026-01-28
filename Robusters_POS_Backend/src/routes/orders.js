@@ -12,7 +12,6 @@ const {
   validate,
   uuidParam,
   createOrderRules,
-  updateOrderStatusRules,
   updatePaymentStatusRules,
 } = require('../validators/orders');
 
@@ -65,32 +64,6 @@ router.get(
   managerOrAdmin,
   [uuidParam('id'), validate],
   orderController.getOrder
-);
-
-/**
- * @route   PATCH /api/orders/:id/status
- * @desc    Update order status
- * @access  Private (Manager/Admin)
- */
-router.patch(
-  '/:id/status',
-  authenticate,
-  managerOrAdmin,
-  [uuidParam('id'), ...updateOrderStatusRules, validate],
-  orderController.updateOrderStatus
-);
-
-/**
- * @route   PATCH /api/orders/:id/cancel
- * @desc    Cancel order
- * @access  Private (Manager/Admin)
- */
-router.patch(
-  '/:id/cancel',
-  authenticate,
-  managerOrAdmin,
-  [uuidParam('id'), validate],
-  orderController.cancelOrder
 );
 
 /**

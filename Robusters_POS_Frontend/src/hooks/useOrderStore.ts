@@ -52,8 +52,7 @@ interface OrderStore {
 
   // Order actions
   createOrder: (paymentMethod: 'CASH' | 'CARD' | 'UPI', notes?: string) => Promise<Order>;
-  loadOrders: (page?: number, limit?: number, status?: Order['status']) => Promise<void>;
-  updateOrderStatus: (orderId: string, status: Order['status']) => Promise<void>;
+  loadOrders: (page?: number, limit?: number) => Promise<void>;
 
   // Calculated values (sync)
   getCartSubtotal: () => number;
@@ -161,12 +160,12 @@ export const useOrderStore = create<OrderStore>()(
         }
       },
 
-      loadOrders: async (page = 1, limit = 20, status) => {
+      loadOrders: async (page = 1, limit = 20) => {
         set({ isLoading: true, error: null });
         try {
-          const response = await orderService.getOrders(page, limit, status);
+          const response = await orderService.getOrders(page, limit);
           set({
-            orders: response.data.orders,
+            orders: response.data.orders || [],
             isLoading: false
           });
         } catch (error: any) {
@@ -174,27 +173,6 @@ export const useOrderStore = create<OrderStore>()(
             error: error.response?.data?.message || error.message || 'Failed to load orders',
             isLoading: false
           });
-        }
-      },
-
-      updateOrderStatus: async (orderId, status) => {
-        set({ isLoading: true, error: null });
-        try {
-          const response = await orderService.updateOrderStatus(orderId, status);
-          if (response.success) {
-            set(state => ({
-              orders: state.orders.map(order =>
-                order.id === orderId ? response.data.order : order
-              ),
-              isLoading: false
-            }));
-          }
-        } catch (error: any) {
-          set({
-            error: error.response?.data?.message || error.message || 'Failed to update order status',
-            isLoading: false
-          });
-          throw error;
         }
       },
 

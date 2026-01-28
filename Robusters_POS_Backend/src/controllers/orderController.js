@@ -126,7 +126,6 @@ const getOrders = async (req, res, next) => {
     const {
       page = 1,
       limit = 20,
-      status,
       startDate,
       endDate,
       customerPhone,
@@ -135,7 +134,6 @@ const getOrders = async (req, res, next) => {
     const result = await Order.findAll({
       page: parseInt(page),
       limit: parseInt(limit),
-      status,
       startDate,
       endDate,
       customerPhone,
@@ -166,71 +164,6 @@ const getOrder = async (req, res, next) => {
     res.json({
       success: true,
       data: { order },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Update order status
- * PATCH /api/orders/:id/status
- */
-const updateOrderStatus = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { status } = req.body;
-
-    if (!Object.values(Order.ORDER_STATUS).includes(status)) {
-      throw new BadRequestError('Invalid order status');
-    }
-
-    const order = await Order.updateStatus(id, status);
-
-    if (!order) {
-      throw new NotFoundError('Order not found');
-    }
-
-    res.json({
-      success: true,
-      data: { order },
-      message: 'Order status updated successfully',
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Cancel order
- * PATCH /api/orders/:id/cancel
- */
-const cancelOrder = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { reason } = req.body;
-
-    // Get current order
-    const currentOrder = await Order.findById(id);
-    if (!currentOrder) {
-      throw new NotFoundError('Order not found');
-    }
-
-    // Check if order can be cancelled
-    if (currentOrder.status === Order.ORDER_STATUS.COMPLETED) {
-      throw new BadRequestError('Cannot cancel completed order');
-    }
-
-    if (currentOrder.status === Order.ORDER_STATUS.CANCELLED) {
-      throw new BadRequestError('Order is already cancelled');
-    }
-
-    const order = await Order.updateStatus(id, Order.ORDER_STATUS.CANCELLED);
-
-    res.json({
-      success: true,
-      data: { order },
-      message: 'Order cancelled successfully',
     });
   } catch (error) {
     next(error);
@@ -289,8 +222,6 @@ module.exports = {
   createOrder,
   getOrders,
   getOrder,
-  updateOrderStatus,
-  cancelOrder,
   updatePaymentStatus,
   getOrderStats,
 };

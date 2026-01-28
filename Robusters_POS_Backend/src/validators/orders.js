@@ -85,15 +85,6 @@ const createOrderRules = [
 ];
 
 /**
- * Validation rules for updating order status
- */
-const updateOrderStatusRules = [
-  body('status')
-    .isIn(Object.values(Order.ORDER_STATUS))
-    .withMessage('Invalid order status'),
-];
-
-/**
  * Validation rules for updating payment status
  */
 const updatePaymentStatusRules = [
@@ -124,7 +115,6 @@ const validate = (req, res, next) => {
 module.exports = {
   uuidParam,
   createOrderRules,
-  updateOrderStatusRules,
   updatePaymentStatusRules,
   validate,
 };

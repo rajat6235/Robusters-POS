@@ -122,9 +122,9 @@ export default function DashboardPage() {
           <CardContent>
             <div className="space-y-3">
               {[
-                { id: '#1234', items: 'Protein Bowl, Smoothie', total: '₹350', status: 'Completed' },
-                { id: '#1233', items: 'Grilled Chicken Salad', total: '₹280', status: 'Ready' },
-                { id: '#1232', items: 'Brown Rice Bowl x2', total: '₹480', status: 'Preparing' },
+                { id: '#1233', items: 'Grilled Chicken Salad', total: '₹280' },
+                { id: '#1232', items: 'Brown Rice Bowl x2', total: '₹480' },
+                { id: '#1231', items: 'Quinoa Salad', total: '₹320' },
               ].map((order) => (
                 <div
                   key={order.id}
@@ -136,7 +136,6 @@ export default function DashboardPage() {
                   </div>
                   <div className="text-right">
                     <p className="font-medium">{order.total}</p>
-                    <p className="text-xs text-primary">{order.status}</p>
                   </div>
                 </div>
               ))}
