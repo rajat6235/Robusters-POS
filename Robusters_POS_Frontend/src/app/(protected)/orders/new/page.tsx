@@ -199,22 +199,103 @@ function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps)
                 </div>
               ) : recentOrders.length > 0 ? (
                 <div>
-                  <h4 className="text-sm font-medium mb-2">Recent Orders</h4>
-                  <div className="space-y-2">
+                  <h4 className="text-sm font-medium mb-3">Recent Orders</h4>
+                  <div className="space-y-4 max-h-64 overflow-y-auto">
                     {recentOrders.map((order: any) => (
-                      <div key={order.id} className="flex justify-between items-center bg-muted/50 rounded-lg px-3 py-2 text-sm">
-                        <div className="min-w-0">
-                          <span className="font-medium">#{order.order_number || order.id?.slice(-6)}</span>
-                          <span className="text-muted-foreground ml-2">
-                            {order.created_at ? new Date(order.created_at).toLocaleDateString() : ''}
-                          </span>
+                      <div key={order.id} className="border rounded-lg p-3 space-y-3">
+                        {/* Order Header */}
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-sm">#{order.order_number || order.id?.slice(-6)}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {order.created_at ? new Date(order.created_at).toLocaleDateString() : ''}
+                            </p>
+                          </div>
+                          
+                          <div className="text-right">
+                            <p className="font-bold text-sm">₹{Number(order.total || 0).toFixed(0)}</p>
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                              {order.payment_method}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                            {new Date(order.created_at).toLocaleDateString()}
-                          </span>
-                          <span className="font-medium">₹{Number(order.total_amount || 0).toFixed(0)}</span>
-                        </div>
+
+                        {/* Order Items */}
+                        {order.items && order.items.length > 0 ? (
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium text-muted-foreground">Items:</p>
+                            <div className="space-y-2">
+                              {order.items.map((item: any, index: number) => (
+                                <div key={item.id || index} className="bg-muted/30 rounded p-2 space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-medium text-xs">{item.item_name || 'Unknown Item'}</span>
+                                      {item.diet_type && (
+                                        <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                                          item.diet_type === 'VEG' ? 'bg-green-100 text-green-700' :
+                                          item.diet_type === 'NON_VEG' ? 'bg-red-100 text-red-700' :
+                                          'bg-blue-100 text-blue-700'
+                                        }`}>
+                                          {item.diet_type}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-right">
+                                      <span className="text-xs">Qty: {item.quantity || 1}</span>
+                                      <p className="font-medium text-xs">₹{Number(item.total_price || 0).toFixed(0)}</p>
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Variants */}
+                                  {item.variants && Array.isArray(item.variants) && item.variants.length > 0 && (
+                                    <div className="text-xs text-muted-foreground">
+                                      <span className="font-medium">Variants: </span>
+                                      {item.variants.map((variant: any, vIndex: number) => (
+                                        <span key={vIndex}>
+                                          {variant.name}
+                                          {vIndex < item.variants.length - 1 ? ', ' : ''}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  
+                                  {/* Addons */}
+                                  {item.addons && Array.isArray(item.addons) && item.addons.length > 0 && (
+                                    <div className="text-xs text-muted-foreground">
+                                      <span className="font-medium">Add-ons: </span>
+                                      {item.addons.map((addon: any, aIndex: number) => (
+                                        <span key={aIndex}>
+                                          {addon.name}
+                                          {aIndex < item.addons.length - 1 ? ', ' : ''}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  
+                                  {/* Special Instructions */}
+                                  {item.special_instructions && (
+                                    <div className="text-xs text-muted-foreground">
+                                      <span className="font-medium">Special Request: </span>
+                                      <span className="italic">{item.special_instructions}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-xs text-muted-foreground italic">
+                            Order details not available
+                          </div>
+                        )}
+
+                        {/* Order Notes */}
+                        {order.notes && (
+                          <div className="text-xs text-muted-foreground">
+                            <span className="font-medium">Order Notes: </span>
+                            <span className="italic">{order.notes}</span>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

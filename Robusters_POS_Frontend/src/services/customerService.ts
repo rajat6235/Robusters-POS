@@ -67,7 +67,35 @@ export interface CustomersListResponse {
 }
 
 export interface CustomerOrdersResponse {
-  orders: any[];
+  orders: {
+    id: string;
+    order_number: string;
+    total: number;
+    subtotal: number;
+    tax: number;
+    payment_method: string;
+    payment_status: string;
+    created_at: string;
+    notes?: string;
+    items: {
+      id: string;
+      menu_item_id: string;
+      item_name: string;
+      diet_type: string;
+      quantity: number;
+      unit_price: number;
+      total_price: number;
+      special_instructions?: string;
+      variants: {
+        name: string;
+        price: number;
+      }[];
+      addons: {
+        name: string;
+        price: number;
+      }[];
+    }[];
+  }[];
   pagination: {
     page: number;
     limit: number;

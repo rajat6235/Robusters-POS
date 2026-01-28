@@ -131,7 +131,7 @@ const getOrders = async (req, res, next) => {
       customerPhone,
     } = req.query;
 
-    const result = await Order.findAll({
+    const result = await Order.findAllWithItems({
       page: parseInt(page),
       limit: parseInt(limit),
       startDate,

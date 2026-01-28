@@ -1,14 +1,25 @@
 import { apiClient } from '@/lib/api';
 
 export interface OrderItem {
-  itemId: string;
+  itemId?: string;
+  item_id?: string; // Backend returns snake_case
+  menu_item_id?: string; // Backend returns snake_case
   quantity: number;
   variantIds?: string[];
+  variant_ids?: string[]; // Backend returns snake_case
   addonSelections?: {
     addonId: string;
     quantity: number;
   }[];
+  addon_selections?: any; // Backend returns snake_case as JSON
   specialInstructions?: string;
+  special_instructions?: string; // Backend returns snake_case
+  unitPrice?: number | string;
+  unit_price?: number | string; // Backend returns snake_case
+  totalPrice?: number | string;
+  total_price?: number | string; // Backend returns snake_case
+  item_name?: string; // Backend includes item name
+  itemName?: string;
 }
 
 export interface CreateOrderRequest {
@@ -21,19 +32,27 @@ export interface CreateOrderRequest {
 
 export interface Order {
   id: string;
-  orderNumber: string;
+  orderNumber?: string;
+  order_number?: string; // Backend returns snake_case
   customerPhone?: string;
+  customer_phone?: string; // Backend returns snake_case
   customerName?: string;
+  customer_name?: string; // Backend returns snake_case
   items: OrderItem[];
-  subtotal: number;
-  tax: number;
-  total: number;
-  paymentMethod: 'CASH' | 'CARD' | 'UPI';
-  paymentStatus: 'PENDING' | 'PAID' | 'FAILED';
+  subtotal: number | string; // Backend might return as string
+  tax: number | string; // Backend might return as string
+  total: number | string; // Backend might return as string
+  paymentMethod?: 'CASH' | 'CARD' | 'UPI';
+  payment_method?: 'CASH' | 'CARD' | 'UPI'; // Backend returns snake_case
+  paymentStatus?: 'PENDING' | 'PAID' | 'FAILED';
+  payment_status?: 'PENDING' | 'PAID' | 'FAILED'; // Backend returns snake_case
   notes?: string;
-  createdBy: string;
-  createdAt: string;
-  updatedAt: string;
+  createdBy?: string;
+  created_by?: string; // Backend returns snake_case
+  createdAt?: string;
+  created_at?: string; // Backend returns snake_case
+  updatedAt?: string;
+  updated_at?: string; // Backend returns snake_case
 }
 
 export interface OrdersResponse {
@@ -99,7 +118,7 @@ export const orderService = {
       totalOrders: number;
       totalRevenue: number;
       averageOrderValue: number;
-      statusBreakdown: Record<Order['status'], number>;
+      paymentMethodBreakdown: Record<string, number>;
       dailyStats: {
         date: string;
         orders: number;

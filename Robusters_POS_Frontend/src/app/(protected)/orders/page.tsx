@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useOrderStore } from '@/hooks/useOrderStore';
 import { Order } from '@/services/orderService';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -34,7 +34,12 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
+
+// Utility function to safely convert string/number to number for price display
+const safeParseFloat = (value: string | number | undefined | null): number => {
+  if (value === null || value === undefined) return 0;
+  return typeof value === 'string' ? parseFloat(value) || 0 : value || 0;
+};
 
 const paymentMethodIcons = {
   CASH: '💵',
@@ -47,24 +52,35 @@ export default function OrdersPage() {
   const { orders, isLoading, error, loadOrders } = useOrderStore();
   
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState('today');
+  const [dateFilter, setDateFilter] = useState('all');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
   // Load orders on mount
   useEffect(() => {
+    console.log('Orders page mounted, loading orders...');
     loadOrders();
   }, [loadOrders]);
 
+  // Debug: log orders when they change
+  useEffect(() => {
+    console.log('Orders updated:', orders);
+  }, [orders]);
+
   // Filter orders based on search and filters
   const filteredOrders = orders.filter(order => {
-    // Search filter
+    // Search filter - handle both camelCase and snake_case field names
+    const orderNumber = order.orderNumber || order.order_number || '';
+    const customerName = order.customerName || order.customer_name || '';
+    const customerPhone = order.customerPhone || order.customer_phone || '';
+    
     const matchesSearch = !searchQuery || 
-      order.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.customerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.customerPhone?.includes(searchQuery);
+      orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      customerPhone.includes(searchQuery);
 
-    // Date filter
-    const orderDate = new Date(order.createdAt);
+    // Date filter - handle both camelCase and snake_case field names
+    const createdAt = order.createdAt || order.created_at;
+    const orderDate = new Date(createdAt);
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
@@ -84,7 +100,11 @@ export default function OrdersPage() {
   });
 
   const formatDate = (dateString: string) => {
+    if (!dateString) return 'Invalid Date';
+    
     const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'Invalid Date';
+    
     const today = new Date();
     const isToday = date.toDateString() === today.toDateString();
     
@@ -168,7 +188,7 @@ export default function OrdersPage() {
               <div>
                 <p className="text-sm text-muted-foreground">Revenue</p>
                 <p className="text-xl font-bold">
-                  ₹{filteredOrders.reduce((sum, o) => sum + o.total, 0).toFixed(0)}
+                  ₹{filteredOrders.reduce((sum, o) => sum + safeParseFloat(o.total), 0).toFixed(0)}
                 </p>
               </div>
             </div>
@@ -223,17 +243,17 @@ export default function OrdersPage() {
 
       {filteredOrders.length === 0 ? (
         <Card>
-          <CardContent className="p-8 text-center">
-            <Receipt className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No orders found</h3>
-            <p className="text-muted-foreground mb-4">
+          <CardContent className="p-6 sm:p-8 text-center">
+            <Receipt className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-base sm:text-lg font-semibold mb-2">No orders found</h3>
+            <p className="text-sm sm:text-base text-muted-foreground mb-4">
               {searchQuery || dateFilter !== 'all' 
                 ? 'Try adjusting your filters or search terms'
                 : 'No orders have been placed yet'
               }
             </p>
             {!searchQuery && dateFilter === 'all' && (
-              <Button onClick={() => router.push('/orders/new')}>
+              <Button onClick={() => router.push('/orders/new')} className="w-full sm:w-auto">
                 <Plus className="h-4 w-4 mr-2" />
                 Create First Order
               </Button>
@@ -241,69 +261,139 @@ export default function OrdersPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4">
-          {filteredOrders.map((order) => (
-            <Card key={order.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="p-4">
-                <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-                  {/* Order Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="font-semibold text-lg">#{order.orderNumber}</h3>
-                    </div>
+        <div className="grid gap-3 sm:gap-4">
+          {filteredOrders.map((order) => {
+            // Handle both camelCase and snake_case field names
+            const orderNumber = order.orderNumber || order.order_number || 'N/A';
+            const customerName = order.customerName || order.customer_name;
+            const customerPhone = order.customerPhone || order.customer_phone;
+            const createdAt = order.createdAt || order.created_at;
+            const paymentMethod = order.paymentMethod || order.payment_method || 'CASH';
+            const total = order.total || 0;
+            const items = order.items || [];
+            const notes = order.notes;
+            
+            return (
+              <Card key={order.id} className="hover:shadow-md transition-shadow">
+                <CardContent className="p-3 sm:p-4">
+                  <div className="flex flex-col sm:flex-row justify-between items-start gap-3 sm:gap-4">
+                    {/* Order Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 sm:gap-3 mb-2">
+                        <h3 className="font-semibold text-base sm:text-lg">#{orderNumber}</h3>
+                      </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-muted-foreground">
-                      {order.customerName && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm text-muted-foreground mb-3">
+                        {customerName && (
+                          <div className="flex items-center gap-2">
+                            <User className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+                            <span className="truncate">{customerName}</span>
+                          </div>
+                        )}
+                        {customerPhone && (
+                          <div className="flex items-center gap-2">
+                            <Phone className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+                            <span className="truncate">{customerPhone}</span>
+                          </div>
+                        )}
                         <div className="flex items-center gap-2">
-                          <User className="h-4 w-4" />
-                          <span>{order.customerName}</span>
+                          <Calendar className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+                          <span>{formatDate(createdAt)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span>{paymentMethodIcons[paymentMethod] || '💵'}</span>
+                          <span>{paymentMethod}</span>
+                        </div>
+                      </div>
+
+                      {/* Order Items Details */}
+                      {items && items.length > 0 && (
+                        <div className="space-y-2 mb-3">
+                          <p className="text-xs sm:text-sm font-medium text-muted-foreground">Items:</p>
+                          <div className="space-y-2">
+                            {items.map((item: any, itemIndex: number) => (
+                              <div key={item.id || itemIndex} className="bg-muted/30 rounded-md p-2 text-xs sm:text-sm">
+                                <div className="flex items-center justify-between mb-1">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="font-medium truncate">
+                                      {item.item_name || item.itemName || `Item #${itemIndex + 1}`}
+                                    </span>
+                                    {item.diet_type && (
+                                      <Badge variant="outline" className="text-xs px-1 py-0 h-4">
+                                        {item.diet_type}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 text-xs">
+                                    <span>Qty: {item.quantity || 1}</span>
+                                    <span className="font-medium">
+                                      ₹{safeParseFloat(item.total_price || item.totalPrice).toFixed(0)}
+                                    </span>
+                                  </div>
+                                </div>
+                                
+                                {/* Variants and Unit Price */}
+                                <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                                  {item.variants && Array.isArray(item.variants) && item.variants.length > 0 && (
+                                    <span>
+                                      Variants: {item.variants.map((v: any) => v.name).join(', ')}
+                                    </span>
+                                  )}
+                                  <span>
+                                    Unit Price: ₹{safeParseFloat(item.unit_price || item.unitPrice).toFixed(0)}
+                                  </span>
+                                </div>
+                                
+                                {/* Addons */}
+                                {item.addons && Array.isArray(item.addons) && item.addons.length > 0 && (
+                                  <div className="text-xs text-muted-foreground mt-1">
+                                    Add-ons: {item.addons.map((a: any) => a.name).join(', ')}
+                                  </div>
+                                )}
+                                
+                                {/* Special Instructions */}
+                                {(item.special_instructions || item.specialInstructions) && (
+                                  <div className="text-xs text-muted-foreground mt-1 italic">
+                                    Note: {item.special_instructions || item.specialInstructions}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
-                      {order.customerPhone && (
-                        <div className="flex items-center gap-2">
-                          <Phone className="h-4 w-4" />
-                          <span>{order.customerPhone}</span>
-                        </div>
+
+                      {notes && (
+                        <p className="text-xs sm:text-sm text-muted-foreground italic">
+                          Order Note: {notes}
+                        </p>
                       )}
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4" />
-                        <span>{formatDate(order.createdAt)}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span>{paymentMethodIcons[order.paymentMethod]}</span>
-                        <span>{order.paymentMethod}</span>
-                      </div>
                     </div>
 
-                    {order.notes && (
-                      <p className="text-sm text-muted-foreground mt-2 italic">
-                        Note: {order.notes}
-                      </p>
-                    )}
-                  </div>
+                    {/* Order Total & Actions */}
+                    <div className="flex flex-col items-end gap-2 sm:gap-3 w-full sm:w-auto">
+                      <div className="text-right">
+                        <p className="text-xl sm:text-2xl font-bold">₹{safeParseFloat(total).toFixed(0)}</p>
+                        <p className="text-xs sm:text-sm text-muted-foreground">
+                          {items.length || 0} item{items.length !== 1 ? 's' : ''}
+                        </p>
+                      </div>
 
-                  {/* Order Total & Actions */}
-                  <div className="flex flex-col items-end gap-3">
-                    <div className="text-right">
-                      <p className="text-2xl font-bold">₹{order.total.toFixed(0)}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {order.items.length} item{order.items.length !== 1 ? 's' : ''}
-                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedOrder(order)}
+                        className="w-full sm:w-auto text-xs sm:text-sm"
+                      >
+                        <Eye className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                        View Details
+                      </Button>
                     </div>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSelectedOrder(order)}
-                    >
-                      <Eye className="h-4 w-4 mr-1" />
-                      View Details
-                    </Button>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 
@@ -313,7 +403,7 @@ export default function OrdersPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Receipt className="h-5 w-5" />
-              Order #{selectedOrder?.orderNumber}
+              Order #{selectedOrder?.orderNumber || selectedOrder?.order_number || 'N/A'}
             </DialogTitle>
           </DialogHeader>
 
@@ -323,20 +413,21 @@ export default function OrdersPage() {
               <div className="grid grid-cols-1 gap-4">
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Created</label>
-                  <p className="mt-1">{formatDate(selectedOrder.createdAt)}</p>
+                  <p className="mt-1">{formatDate(selectedOrder.createdAt || selectedOrder.created_at)}</p>
                 </div>
               </div>
 
               {/* Customer Info */}
-              {(selectedOrder.customerName || selectedOrder.customerPhone) && (
+              {((selectedOrder.customerName || selectedOrder.customer_name) || 
+                (selectedOrder.customerPhone || selectedOrder.customer_phone)) && (
                 <div>
                   <h4 className="font-medium mb-2">Customer</h4>
                   <div className="bg-muted/50 rounded-lg p-3">
-                    {selectedOrder.customerName && (
-                      <p className="font-medium">{selectedOrder.customerName}</p>
+                    {(selectedOrder.customerName || selectedOrder.customer_name) && (
+                      <p className="font-medium">{selectedOrder.customerName || selectedOrder.customer_name}</p>
                     )}
-                    {selectedOrder.customerPhone && (
-                      <p className="text-sm text-muted-foreground">{selectedOrder.customerPhone}</p>
+                    {(selectedOrder.customerPhone || selectedOrder.customer_phone) && (
+                      <p className="text-sm text-muted-foreground">{selectedOrder.customerPhone || selectedOrder.customer_phone}</p>
                     )}
                   </div>
                 </div>
@@ -345,17 +436,69 @@ export default function OrdersPage() {
               {/* Order Items */}
               <div>
                 <h4 className="font-medium mb-3">Items</h4>
-                <div className="space-y-2">
-                  {selectedOrder.items.map((item, index) => (
-                    <div key={index} className="flex justify-between items-start bg-muted/50 rounded-lg p-3">
-                      <div className="flex-1">
-                        <p className="font-medium">Item #{index + 1}</p>
-                        <p className="text-sm text-muted-foreground">Quantity: {item.quantity}</p>
-                        {item.specialInstructions && (
-                          <p className="text-sm text-muted-foreground italic mt-1">
-                            Note: {item.specialInstructions}
+                <div className="space-y-3">
+                  {(selectedOrder.items || []).map((item: any, index: number) => (
+                    <div key={item.id || index} className="bg-muted/50 rounded-lg p-3 space-y-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-medium text-sm sm:text-base">
+                            {item.item_name || item.itemName || `Item #${index + 1}`}
+                          </span>
+                          {item.diet_type && (
+                            <Badge variant="outline" className="text-xs flex-shrink-0">
+                              {item.diet_type}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 sm:text-right">
+                          <span className="text-xs sm:text-sm">Qty: {item.quantity || 1}</span>
+                          <p className="font-medium text-sm sm:text-base">
+                            ₹{safeParseFloat(
+                              item.total_price || 
+                              item.totalPrice || 
+                              (safeParseFloat(item.unit_price || item.unitPrice) * (item.quantity || 1))
+                            ).toFixed(2)}
                           </p>
-                        )}
+                        </div>
+                      </div>
+                      
+                      {/* Variants */}
+                      {item.variants && Array.isArray(item.variants) && item.variants.length > 0 && (
+                        <div className="text-xs sm:text-sm text-muted-foreground">
+                          <span className="font-medium">Variants: </span>
+                          {item.variants.map((variant: any, vIndex: number) => (
+                            <span key={vIndex}>
+                              {variant.name}
+                              {vIndex < item.variants.length - 1 ? ', ' : ''}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      
+                      {/* Addons */}
+                      {item.addons && Array.isArray(item.addons) && item.addons.length > 0 && (
+                        <div className="text-xs sm:text-sm text-muted-foreground">
+                          <span className="font-medium">Add-ons: </span>
+                          {item.addons.map((addon: any, aIndex: number) => (
+                            <span key={aIndex}>
+                              {addon.name}
+                              {aIndex < item.addons.length - 1 ? ', ' : ''}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      
+                      {/* Special Instructions */}
+                      {(item.specialInstructions || item.special_instructions) && (
+                        <div className="text-xs sm:text-sm text-muted-foreground">
+                          <span className="font-medium">Special Request: </span>
+                          <span className="italic">{item.specialInstructions || item.special_instructions}</span>
+                        </div>
+                      )}
+                      
+                      {/* Unit Price */}
+                      <div className="text-xs text-muted-foreground">
+                        Unit Price: ₹{safeParseFloat(item.unit_price || item.unitPrice).toFixed(2)}
                       </div>
                     </div>
                   ))}
@@ -366,19 +509,19 @@ export default function OrdersPage() {
               <div className="border-t pt-4">
                 <div className="flex justify-between items-center mb-2">
                   <span>Subtotal</span>
-                  <span>₹{selectedOrder.subtotal.toFixed(2)}</span>
+                  <span>₹{safeParseFloat(selectedOrder.subtotal).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between items-center mb-2">
                   <span>Tax</span>
-                  <span>₹{selectedOrder.tax.toFixed(2)}</span>
+                  <span>₹{safeParseFloat(selectedOrder.tax).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between items-center text-lg font-bold border-t pt-2">
                   <span>Total</span>
-                  <span>₹{selectedOrder.total.toFixed(2)}</span>
+                  <span>₹{safeParseFloat(selectedOrder.total).toFixed(2)}</span>
                 </div>
                 <div className="flex items-center gap-2 mt-3 text-sm text-muted-foreground">
                   <CreditCard className="h-4 w-4" />
-                  <span>Payment: {selectedOrder.paymentMethod}</span>
+                  <span>Payment: {selectedOrder.paymentMethod || selectedOrder.payment_method || 'CASH'}</span>
                 </div>
               </div>
 

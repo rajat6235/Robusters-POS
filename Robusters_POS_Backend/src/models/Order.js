@@ -43,6 +43,7 @@ const generateOrderNumber = async () => {
 const create = async ({
   customerPhone,
   customerName,
+  customerId,
   items,
   subtotal,
   tax,
@@ -62,14 +63,15 @@ const create = async ({
     // Create order
     const orderResult = await client.query(
       `INSERT INTO orders (
-        order_number, customer_phone, customer_name, subtotal, tax, total,
+        order_number, customer_phone, customer_name, customer_id, subtotal, tax, total,
         payment_method, payment_status, notes, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *`,
       [
         orderNumber,
         customerPhone,
         customerName,
+        customerId,
         subtotal,
         tax,
         total,
@@ -277,11 +279,11 @@ const getStats = async ({ startDate, endDate } = {}) => {
     values
   );
   
-  // Get status breakdown
-  const statusResult = await db.query(
-    `SELECT status, COUNT(*) as count
+  // Get payment method breakdown instead of status breakdown
+  const paymentMethodResult = await db.query(
+    `SELECT payment_method, COUNT(*) as count
      FROM orders ${whereClause}
-     GROUP BY status`,
+     GROUP BY payment_method`,
     values
   );
   
@@ -299,23 +301,23 @@ const getStats = async ({ startDate, endDate } = {}) => {
   );
   
   const stats = statsResult.rows[0];
-  const statusBreakdown = {};
+  const paymentMethodBreakdown = {};
   
-  // Initialize all statuses with 0
-  Object.values(ORDER_STATUS).forEach(status => {
-    statusBreakdown[status] = 0;
+  // Initialize all payment methods with 0
+  Object.values(PAYMENT_METHODS).forEach(method => {
+    paymentMethodBreakdown[method] = 0;
   });
   
   // Fill in actual counts
-  statusResult.rows.forEach(row => {
-    statusBreakdown[row.status] = parseInt(row.count);
+  paymentMethodResult.rows.forEach(row => {
+    paymentMethodBreakdown[row.payment_method] = parseInt(row.count);
   });
   
   return {
     totalOrders: parseInt(stats.total_orders),
     totalRevenue: parseFloat(stats.total_revenue),
     averageOrderValue: parseFloat(stats.average_order_value),
-    statusBreakdown,
+    paymentMethodBreakdown,
     dailyStats: dailyResult.rows.map(row => ({
       date: row.date,
       orders: parseInt(row.orders),
@@ -324,11 +326,164 @@ const getStats = async ({ startDate, endDate } = {}) => {
   };
 };
 
+/**
+ * Find orders with detailed items (variants, addons, etc.)
+ * @param {Object} options - Query options
+ * @returns {Promise<Object>} Orders with detailed items and pagination info
+ */
+const findAllWithItems = async ({
+  page = 1,
+  limit = 20,
+  startDate,
+  endDate,
+  customerPhone,
+} = {}) => {
+  const offset = (page - 1) * limit;
+  const conditions = [];
+  const values = [];
+  let paramIndex = 1;
+  
+  if (startDate) {
+    conditions.push(`DATE(o.created_at) >= $${paramIndex}`);
+    values.push(startDate);
+    paramIndex++;
+  }
+  
+  if (endDate) {
+    conditions.push(`DATE(o.created_at) <= $${paramIndex}`);
+    values.push(endDate);
+    paramIndex++;
+  }
+  
+  if (customerPhone) {
+    conditions.push(`o.customer_phone ILIKE $${paramIndex}`);
+    values.push(`%${customerPhone}%`);
+    paramIndex++;
+  }
+  
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  
+  // Get total count
+  const countResult = await db.query(
+    `SELECT COUNT(*) as total FROM orders o ${whereClause}`,
+    values
+  );
+  
+  const total = parseInt(countResult.rows[0].total);
+  const totalPages = Math.ceil(total / limit);
+  
+  // Get orders
+  const ordersResult = await db.query(
+    `SELECT o.*, u.first_name, u.last_name
+     FROM orders o
+     LEFT JOIN users u ON u.id = o.created_by
+     ${whereClause}
+     ORDER BY o.created_at DESC
+     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+    [...values, limit, offset]
+  );
+  
+  // Get detailed items for each order
+  const ordersWithItems = [];
+  
+  for (const order of ordersResult.rows) {
+    // Get order items with menu item details
+    const itemsQuery = `
+      SELECT oi.*, mi.name as item_name, mi.diet_type
+      FROM order_items oi
+      JOIN menu_items mi ON mi.id = oi.menu_item_id
+      WHERE oi.order_id = $1
+      ORDER BY oi.created_at
+    `;
+    
+    const itemsResult = await db.query(itemsQuery, [order.id]);
+    
+    // Process each item to include variants and addons
+    const processedItems = [];
+    
+    for (const item of itemsResult.rows) {
+      const processedItem = {
+        id: item.id,
+        menu_item_id: item.menu_item_id,
+        item_name: item.item_name,
+        diet_type: item.diet_type,
+        quantity: item.quantity,
+        unit_price: parseFloat(item.unit_price),
+        total_price: parseFloat(item.total_price),
+        special_instructions: item.special_instructions,
+        variants: [],
+        addons: []
+      };
+      
+      try {
+        // Get variants if they exist
+        if (item.variant_ids && Array.isArray(item.variant_ids) && item.variant_ids.length > 0) {
+          const variantsQuery = `
+            SELECT name, price FROM item_variants 
+            WHERE id = ANY($1::uuid[])
+          `;
+          const variantsResult = await db.query(variantsQuery, [item.variant_ids]);
+          
+          processedItem.variants = variantsResult.rows.map(v => ({
+            name: v.name,
+            price: parseFloat(v.price)
+          }));
+        }
+        
+        // Get addons if they exist
+        if (item.addon_selections && Array.isArray(item.addon_selections) && item.addon_selections.length > 0) {
+          const addonIds = item.addon_selections
+            .map(addon => addon.addonId)
+            .filter(id => id && id !== null);
+          
+          if (addonIds.length > 0) {
+            const addonsQuery = `
+              SELECT name, price FROM addons 
+              WHERE id = ANY($1::uuid[])
+            `;
+            const addonsResult = await db.query(addonsQuery, [addonIds]);
+            
+            processedItem.addons = addonsResult.rows.map(a => ({
+              name: a.name,
+              price: parseFloat(a.price)
+            }));
+          }
+        }
+      } catch (variantAddonError) {
+        // Continue with empty variants/addons if there's an error
+      }
+      
+      processedItems.push(processedItem);
+    }
+    
+    const orderWithItems = {
+      ...order,
+      total: parseFloat(order.total),
+      subtotal: parseFloat(order.subtotal || 0),
+      tax: parseFloat(order.tax || 0),
+      items: processedItems
+    };
+    
+    ordersWithItems.push(orderWithItems);
+  }
+  
+  return {
+    orders: ordersWithItems,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages,
+    },
+  };
+};
+
 module.exports = {
   PAYMENT_METHODS,
   PAYMENT_STATUS,
   create,
   findAll,
+  findAllWithItems,
   findById,
   updatePaymentStatus,
   getStats,

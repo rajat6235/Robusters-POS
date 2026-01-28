@@ -91,86 +91,88 @@ export function CustomerForm({ onSuccess, onCancel }: CustomerFormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+    <form onSubmit={handleSubmit} className="space-y-4 p-1">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="firstName">First Name *</Label>
+          <Label htmlFor="firstName" className="text-sm font-medium">First Name *</Label>
           <Input
             id="firstName"
             value={formData.firstName}
             onChange={(e) => handleInputChange('firstName', e.target.value)}
             placeholder="Enter first name"
-            className={errors.firstName ? 'border-red-500' : ''}
+            className={`text-sm ${errors.firstName ? 'border-red-500' : ''}`}
           />
           {errors.firstName && (
-            <p className="text-sm text-red-500">{errors.firstName}</p>
+            <p className="text-xs text-red-500">{errors.firstName}</p>
           )}
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="lastName">Last Name</Label>
+          <Label htmlFor="lastName" className="text-sm font-medium">Last Name</Label>
           <Input
             id="lastName"
             value={formData.lastName}
             onChange={(e) => handleInputChange('lastName', e.target.value)}
             placeholder="Enter last name"
+            className="text-sm"
           />
         </div>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="phone">Phone Number *</Label>
+        <Label htmlFor="phone" className="text-sm font-medium">Phone Number *</Label>
         <Input
           id="phone"
           value={formData.phone}
           onChange={(e) => handleInputChange('phone', e.target.value)}
           placeholder="Enter phone number"
-          className={errors.phone ? 'border-red-500' : ''}
+          className={`text-sm ${errors.phone ? 'border-red-500' : ''}`}
         />
         {errors.phone && (
-          <p className="text-sm text-red-500">{errors.phone}</p>
+          <p className="text-xs text-red-500">{errors.phone}</p>
         )}
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="email">Email Address</Label>
+        <Label htmlFor="email" className="text-sm font-medium">Email Address</Label>
         <Input
           id="email"
           type="email"
           value={formData.email}
           onChange={(e) => handleInputChange('email', e.target.value)}
           placeholder="Enter email address"
-          className={errors.email ? 'border-red-500' : ''}
+          className={`text-sm ${errors.email ? 'border-red-500' : ''}`}
         />
         {errors.email && (
-          <p className="text-sm text-red-500">{errors.email}</p>
+          <p className="text-xs text-red-500">{errors.email}</p>
         )}
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="dateOfBirth">Date of Birth</Label>
+        <Label htmlFor="dateOfBirth" className="text-sm font-medium">Date of Birth</Label>
         <Input
           id="dateOfBirth"
           type="date"
           value={formData.dateOfBirth}
           onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
-          className={errors.dateOfBirth ? 'border-red-500' : ''}
+          className={`text-sm ${errors.dateOfBirth ? 'border-red-500' : ''}`}
         />
         {errors.dateOfBirth && (
-          <p className="text-sm text-red-500">{errors.dateOfBirth}</p>
+          <p className="text-xs text-red-500">{errors.dateOfBirth}</p>
         )}
       </div>
 
-      <div className="flex justify-end gap-2 pt-4">
+      <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4">
         <Button
           type="button"
           variant="outline"
           onClick={onCancel}
           disabled={isLoading}
+          className="w-full sm:w-auto text-sm"
         >
           Cancel
         </Button>
-        <Button type="submit" disabled={isLoading}>
+        <Button type="submit" disabled={isLoading} className="w-full sm:w-auto text-sm">
           {isLoading ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin mr-2" />

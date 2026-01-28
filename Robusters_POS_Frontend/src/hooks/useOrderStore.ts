@@ -163,12 +163,15 @@ export const useOrderStore = create<OrderStore>()(
       loadOrders: async (page = 1, limit = 20) => {
         set({ isLoading: true, error: null });
         try {
+          console.log('Loading orders...');
           const response = await orderService.getOrders(page, limit);
+          console.log('Orders response:', response);
           set({
             orders: response.data.orders || [],
             isLoading: false
           });
         } catch (error: any) {
+          console.error('Load orders error:', error);
           set({
             error: error.response?.data?.message || error.message || 'Failed to load orders',
             isLoading: false
