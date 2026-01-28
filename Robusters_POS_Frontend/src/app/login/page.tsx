@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ChefHat, Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
+import Image from 'next/image';
 import { z } from 'zod';
 import { cn } from '@/lib/utils';
 
@@ -66,8 +67,8 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="mb-8 flex flex-col items-center">
-          <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-primary shadow-lg">
-            <ChefHat className="h-12 w-12 text-primary-foreground" />
+          <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-black shadow-lg">
+            <Image src="/logo.png" alt="Robusters" width={48} height={48} className="h-12 w-12" />
           </div>
           <h1 className="text-3xl font-bold tracking-tight">Robusters</h1>
           <p className="text-muted-foreground">Fitness Café POS</p>

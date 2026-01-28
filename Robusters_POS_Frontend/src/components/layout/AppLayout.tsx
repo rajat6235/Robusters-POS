@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -12,7 +13,6 @@ import {
   LogOut,
   Menu,
   X,
-  ChefHat,
   Shield,
   History,
 } from 'lucide-react';
@@ -82,7 +82,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       {/* Mobile Header */}
       <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b bg-card px-4 lg:hidden">
         <div className="flex items-center gap-2">
-          <ChefHat className="h-8 w-8 text-primary" />
+          <Image src="/logo.png" alt="Robusters" width={32} height={32} className="h-8 w-8" />
           <span className="text-lg font-bold">Robusters</span>
         </div>
         <Button
@@ -99,7 +99,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         {/* Sidebar - Desktop */}
         <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 lg:z-50 lg:border-r lg:bg-card">
           <div className="flex h-16 items-center gap-2 border-b px-6">
-            <ChefHat className="h-8 w-8 text-primary" />
+            <Image src="/logo.png" alt="Robusters" width={32} height={32} className="h-8 w-8" />
             <span className="text-xl font-bold">Robusters POS</span>
           </div>
           
@@ -147,7 +147,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           )}
         >
           <div className="flex h-16 items-center gap-2 border-b px-6">
-            <ChefHat className="h-8 w-8 text-primary" />
+            <Image src="/logo.png" alt="Robusters" width={32} height={32} className="h-8 w-8" />
             <span className="text-xl font-bold">Robusters POS</span>
           </div>
           

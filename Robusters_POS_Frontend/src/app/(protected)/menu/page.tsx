@@ -337,40 +337,71 @@ function CategoriesItemsTab() {
 
               <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
                 {cat.items?.map((item) => (
-                  <Card key={item.id} className={cn(!item.isAvailable && 'opacity-50')}>
+                  <Card key={item.id} className={cn(
+                    !item.isAvailable && 'opacity-50 bg-muted/30 border-dashed'
+                  )}>
                     <CardContent className="p-4">
                       <div className="flex justify-between items-start mb-2">
                         <div className="flex items-start gap-2 flex-1 min-w-0">
-                          <div className={cn('h-3 w-3 rounded-full mt-1 shrink-0', dietColors[item.dietType])} />
+                          <div className={cn(
+                            'h-3 w-3 rounded-full mt-1 shrink-0', 
+                            dietColors[item.dietType], 
+                            !item.isAvailable && 'opacity-50'
+                          )} />
                           <div className="min-w-0">
-                            <h4 className="font-medium truncate">{item.name}</h4>
-                            <p className="text-sm text-muted-foreground">₹{item.basePrice}</p>
+                            <h4 className={cn(
+                              "font-medium truncate", 
+                              !item.isAvailable && 'text-muted-foreground line-through'
+                            )}>{item.name}</h4>
+                            <p className={cn(
+                              "text-sm text-muted-foreground",
+                              !item.isAvailable && 'line-through'
+                            )}>
+                              ₹{item.variants?.length > 0 
+                                ? Math.min(...item.variants.map(v => v.price))
+                                : item.basePrice}
+                            </p>
                             {item.description && (
-                              <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{item.description}</p>
+                              <p className={cn("text-xs text-muted-foreground mt-1 line-clamp-2", !item.isAvailable && 'opacity-70')}>{item.description}</p>
                             )}
                             {item.variants?.length > 0 && (
-                              <Badge variant="secondary" className="text-xs mt-1">
+                              <Badge variant="secondary" className={cn("text-xs mt-1", !item.isAvailable && 'opacity-70')}>
                                 <Layers className="h-3 w-3 mr-1" />{item.variants.length} variants
                               </Badge>
                             )}
                           </div>
                         </div>
-                        <Switch
-                          checked={item.isAvailable}
-                          onCheckedChange={() => toggleItemAvailability(item.id)}
-                          disabled={isLoading}
-                        />
+                        <div className="flex flex-col items-end gap-2">
+                          {!item.isAvailable && (
+                            <Badge variant="destructive" className="text-xs">
+                              Unavailable
+                            </Badge>
+                          )}
+                          <Switch
+                            checked={item.isAvailable}
+                            onCheckedChange={() => toggleItemAvailability(item.id)}
+                            disabled={isLoading}
+                          />
+                        </div>
                       </div>
 
                       <div className="flex gap-1 mt-3">
-                        <Button variant="outline" size="sm" className="flex-1" onClick={() => openEditItem(item)}>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className={cn("flex-1", !item.isAvailable && 'opacity-70')} 
+                          onClick={() => openEditItem(item)}
+                          disabled={!item.isAvailable}
+                        >
                           <Edit className="h-3 w-3 mr-1" />Edit
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
+                          className={cn(!item.isAvailable && 'opacity-70')}
                           onClick={() => setExpandedItemId(expandedItemId === item.id ? null : item.id)}
                           title="Manage variants"
+                          disabled={!item.isAvailable}
                         >
                           <Layers className="h-3 w-3 mr-1" />
                           {expandedItemId === item.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
