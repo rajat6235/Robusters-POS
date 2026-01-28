@@ -74,9 +74,9 @@ const createOrder = async (req, res, next) => {
       });
     }
 
-    // Calculate tax (5% GST)
-    const tax = subtotal * 0.05;
-    const total = subtotal + tax;
+    // Calculate tax (no tax)
+    const tax = 0;
+    const total = subtotal;
 
     // Create order
     const order = await Order.create({

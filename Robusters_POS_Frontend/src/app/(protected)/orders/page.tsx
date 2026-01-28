@@ -511,10 +511,12 @@ export default function OrdersPage() {
                   <span>Subtotal</span>
                   <span>₹{safeParseFloat(selectedOrder.subtotal).toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between items-center mb-2">
-                  <span>Tax</span>
-                  <span>₹{safeParseFloat(selectedOrder.tax).toFixed(2)}</span>
-                </div>
+                {safeParseFloat(selectedOrder.tax) > 0 && (
+                  <div className="flex justify-between items-center mb-2">
+                    <span>Tax</span>
+                    <span>₹{safeParseFloat(selectedOrder.tax).toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center text-lg font-bold border-t pt-2">
                   <span>Total</span>
                   <span>₹{safeParseFloat(selectedOrder.total).toFixed(2)}</span>

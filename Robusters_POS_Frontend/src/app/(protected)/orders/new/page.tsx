@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { useMenuStore } from '@/hooks/useMenuStore';
 import { useOrderStore, calcItemUnitPrice } from '@/hooks/useOrderStore';
 import { customerService, Customer } from '@/services/customerService';
@@ -360,6 +361,7 @@ function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps)
 // ─── Menu / Cart Step ─────────────────────────────────────────────────
 
 export default function OrdersPage() {
+  const router = useRouter();
   const { categories, isLoading: menuLoading, loadMenu } = useMenuStore();
   const {
     cart,
@@ -475,6 +477,9 @@ export default function OrdersPage() {
       setOrderNotes('');
       setOrderCustomer(null);
       setStep('customer');
+      
+      // Navigate to orders page
+      router.push('/orders');
     } catch (error: any) {
       toast.error(error.message || 'Failed to place order');
     }
@@ -749,8 +754,18 @@ export default function OrdersPage() {
                 </div>
               </div>
 
-              <Button className="w-full h-12" onClick={handleAddToCart}>
-                Add to Cart — ₹{currentDialogPrice.toFixed(0)}
+              <Button 
+                className="w-full h-12" 
+                onClick={handleAddToCart}
+                disabled={
+                  // Disable if item has variants but none selected
+                  selectedItem?.variants && selectedItem.variants.length > 0 && selectedVariants.length === 0
+                }
+              >
+                {selectedItem?.variants && selectedItem.variants.length > 0 && selectedVariants.length === 0 
+                  ? "Select a variant to continue"
+                  : `Add to Cart — ₹${currentDialogPrice.toFixed(0)}`
+                }
               </Button>
             </div>
           )}

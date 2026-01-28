@@ -10,6 +10,7 @@ const { createMenuSchema } = require('./migrations/002_menu_schema');
 const { createOrderSchema } = require('./migrations/003_order_schema');
 const { createCustomerTables } = require('./migrations/004_customer_system');
 const { createActivityLogSchema } = require('./migrations/005_activity_log');
+const { removeTaxCalculation } = require('./migrations/008_remove_tax_calculation');
 
 const useSSL = process.env.DB_SSL === 'true';
 const dbName = process.env.DB_NAME || 'robusters_pos';
@@ -101,6 +102,10 @@ async function initDatabase() {
     console.log('Creating activity log tables...');
     await pool.query(createActivityLogSchema);
     console.log('Activity log tables created successfully.');
+
+    console.log('Removing tax calculation...');
+    await pool.query(removeTaxCalculation);
+    console.log('Tax calculation removed successfully.');
 
     await pool.end();
     console.log('\nDatabase initialization complete!');
