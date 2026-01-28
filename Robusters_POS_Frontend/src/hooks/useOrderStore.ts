@@ -4,9 +4,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { MenuItem, Variant, Addon } from '@/types/menu';
 import { orderService, CreateOrderRequest, Order } from '@/services/orderService';
-import { menuService } from '@/services/menuService';
 
-interface CartItem {
+export interface CartItem {
   id: string;
   menuItem: MenuItem;
   selectedVariants: Variant[];
@@ -15,11 +14,23 @@ interface CartItem {
   specialInstructions?: string;
 }
 
+/** Calculate unit price for a cart item (sync, no API call) */
+export function calcItemUnitPrice(item: CartItem): number {
+  const variantTotal = item.selectedVariants.reduce((sum, v) => sum + v.price, 0);
+  const addonTotal = item.addonSelections.reduce(
+    (sum, s) => sum + s.addon.price * s.quantity,
+    0
+  );
+  // For variant items basePrice is 0; variant price IS the item price
+  return item.menuItem.basePrice + variantTotal + addonTotal;
+}
+
 interface OrderStore {
   cart: CartItem[];
   orders: Order[];
   customerPhone: string;
   customerName: string;
+  customerId: string | null;
   isLoading: boolean;
   error: string | null;
 
@@ -36,21 +47,18 @@ interface OrderStore {
   clearCart: () => void;
 
   // Customer info
-  setCustomerInfo: (phone: string, name: string) => void;
+  setCustomerInfo: (phone: string, name: string, customerId?: string) => void;
+  clearCustomerInfo: () => void;
 
   // Order actions
   createOrder: (paymentMethod: 'CASH' | 'CARD' | 'UPI', notes?: string) => Promise<Order>;
   loadOrders: (page?: number, limit?: number, status?: Order['status']) => Promise<void>;
   updateOrderStatus: (orderId: string, status: Order['status']) => Promise<void>;
 
-  // Calculated values
-  getCartSubtotal: () => Promise<number>;
-  getCartTax: () => Promise<number>;
-  getCartTotal: () => Promise<number>;
-  getItemTotal: (item: CartItem) => Promise<number>;
+  // Calculated values (sync)
+  getCartSubtotal: () => number;
+  getCartTotal: () => number;
 }
-
-const TAX_RATE = 0.05; // 5% GST
 
 export const useOrderStore = create<OrderStore>()(
   persist(
@@ -59,6 +67,7 @@ export const useOrderStore = create<OrderStore>()(
       orders: [],
       customerPhone: '',
       customerName: '',
+      customerId: null,
       isLoading: false,
       error: null,
 
@@ -95,8 +104,12 @@ export const useOrderStore = create<OrderStore>()(
         set({ cart: [] });
       },
 
-      setCustomerInfo: (phone, name) => {
-        set({ customerPhone: phone, customerName: name });
+      setCustomerInfo: (phone, name, customerId) => {
+        set({ customerPhone: phone, customerName: name, customerId: customerId || null });
+      },
+
+      clearCustomerInfo: () => {
+        set({ customerPhone: '', customerName: '', customerId: null });
       },
 
       createOrder: async (paymentMethod, notes) => {
@@ -124,14 +137,17 @@ export const useOrderStore = create<OrderStore>()(
           };
 
           const response = await orderService.createOrder(orderData);
-          
+
           if (response.success) {
             set(state => ({
               orders: [response.data.order, ...state.orders],
-              cart: [], // Clear cart after successful order
+              cart: [],
+              customerPhone: '',
+              customerName: '',
+              customerId: null,
               isLoading: false
             }));
-            
+
             return response.data.order;
           } else {
             throw new Error('Failed to create order');
@@ -182,66 +198,24 @@ export const useOrderStore = create<OrderStore>()(
         }
       },
 
-      getCartSubtotal: async () => {
+      // Synchronous price calculations (no API call needed)
+      getCartSubtotal: () => {
         const state = get();
-        let subtotal = 0;
-
-        for (const item of state.cart) {
-          const itemTotal = await get().getItemTotal(item);
-          subtotal += itemTotal;
-        }
-
-        return subtotal;
+        return state.cart.reduce((sum, item) => sum + calcItemUnitPrice(item) * item.quantity, 0);
       },
 
-      getCartTax: async () => {
-        const subtotal = await get().getCartSubtotal();
-        return subtotal * TAX_RATE;
-      },
-
-      getCartTotal: async () => {
-        const subtotal = await get().getCartSubtotal();
-        const tax = await get().getCartTax();
-        return subtotal + tax;
-      },
-
-      getItemTotal: async (item) => {
-        try {
-          // Use the price calculation API for accurate pricing
-          const response = await menuService.calculatePrice({
-            itemId: item.menuItem.id,
-            variantIds: item.selectedVariants.map(v => v.id),
-            addonSelections: item.addonSelections.map(selection => ({
-              addonId: selection.addon.id,
-              quantity: selection.quantity
-            }))
-          });
-
-          if (response.success) {
-            return response.data.totalPrice * item.quantity;
-          } else {
-            // Fallback to manual calculation
-            let total = item.menuItem.basePrice;
-            total += item.selectedVariants.reduce((sum, variant) => sum + variant.price, 0);
-            total += item.addonSelections.reduce((sum, selection) => sum + (selection.addon.price * selection.quantity), 0);
-            return total * item.quantity;
-          }
-        } catch (error) {
-          // Fallback to manual calculation on API error
-          let total = item.menuItem.basePrice;
-          total += item.selectedVariants.reduce((sum, variant) => sum + variant.price, 0);
-          total += item.addonSelections.reduce((sum, selection) => sum + (selection.addon.price * selection.quantity), 0);
-          return total * item.quantity;
-        }
+      getCartTotal: () => {
+        return get().getCartSubtotal();
       },
     }),
     {
       name: 'robusters-order-storage',
-      partialize: (state) => ({ 
+      partialize: (state) => ({
         cart: state.cart,
         customerPhone: state.customerPhone,
-        customerName: state.customerName
-      }), // Only persist cart and customer info
+        customerName: state.customerName,
+        customerId: state.customerId
+      }),
     }
   )
 );

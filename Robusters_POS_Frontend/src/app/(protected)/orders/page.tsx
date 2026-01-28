@@ -1,19 +1,20 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useMenuStore } from '@/hooks/useMenuStore';
-import { useOrderStore } from '@/hooks/useOrderStore';
+import { useOrderStore, calcItemUnitPrice } from '@/hooks/useOrderStore';
+import { customerService, Customer } from '@/services/customerService';
+import { CustomerForm } from '@/components/customer/CustomerForm';
 import { MenuItem, Variant, Addon, DietType } from '@/types/menu';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import {
-  ShoppingCart, Plus, Minus, Trash2, Search, Check, Loader2
+  ShoppingCart, Plus, Minus, Trash2, Search, Check, Loader2,
+  Phone, User, ArrowLeft, UserPlus, SkipForward, Receipt,
+  Star, CreditCard, ChevronUp
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -24,20 +25,282 @@ const dietColors: Record<DietType, string> = {
   egg: 'bg-yellow-500',
 };
 
+type OrderStep = 'customer' | 'menu';
+
+/** Display price for a menu item card (min variant price or basePrice) */
+function itemDisplayPrice(item: MenuItem): number {
+  if (item.hasVariants && item.variants?.length > 0) {
+    return Math.min(...item.variants.map(v => v.price));
+  }
+  return item.basePrice;
+}
+
+/** Calculate dynamic price for dialog based on selections */
+function dialogPrice(
+  item: MenuItem,
+  selectedVariants: Variant[],
+  selectedAddons: { addon: Addon; quantity: number }[],
+  qty: number
+): number {
+  const variantTotal = selectedVariants.reduce((sum, v) => sum + v.price, 0);
+  const addonTotal = selectedAddons.reduce((sum, s) => sum + s.addon.price * s.quantity, 0);
+  return (item.basePrice + variantTotal + addonTotal) * qty;
+}
+
+// ─── Customer Lookup Step ──────────────────────────────────────────────
+
+interface CustomerLookupProps {
+  onCustomerSelected: (customer: Customer) => void;
+  onSkip: () => void;
+}
+
+function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps) {
+  const [phoneQuery, setPhoneQuery] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const [foundCustomer, setFoundCustomer] = useState<Customer | null>(null);
+  const [recentOrders, setRecentOrders] = useState<any[]>([]);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+
+  const handleSearch = async () => {
+    const raw = phoneQuery.trim();
+    if (!raw) {
+      toast.error('Please enter a phone number');
+      return;
+    }
+    setSearching(true);
+    setSearched(false);
+    setFoundCustomer(null);
+    setRecentOrders([]);
+    setShowAddForm(false);
+
+    try {
+      // Build phone variants to try (exact → with leading 0 → without leading 0)
+      const variants: string[] = [raw];
+      const digitsOnly = raw.replace(/[^0-9]/g, '');
+      if (!digitsOnly.startsWith('0')) {
+        variants.push('0' + digitsOnly);
+      } else {
+        variants.push(digitsOnly.slice(1));
+      }
+
+      let customer = null;
+      for (const variant of variants) {
+        const response = await customerService.searchCustomers(variant);
+        if (response.data.customer) {
+          customer = response.data.customer;
+          break;
+        }
+      }
+
+      setFoundCustomer(customer);
+      setSearched(true);
+
+      if (customer) {
+        // Load recent orders
+        setLoadingOrders(true);
+        try {
+          const ordersRes = await customerService.getCustomerOrders(customer.id, 1, 5);
+          setRecentOrders(ordersRes.data.orders || []);
+        } catch {
+          // Non-critical, continue
+        } finally {
+          setLoadingOrders(false);
+        }
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Search failed');
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') handleSearch();
+  };
+
+  const handleCustomerCreated = async () => {
+    setShowAddForm(false);
+    // Re-search to get the created customer
+    if (phoneQuery.trim()) {
+      await handleSearch();
+    }
+    toast.success('Customer created successfully');
+  };
+
+  return (
+    <div className="flex items-center justify-center min-h-[calc(100vh-8rem)] px-4">
+      <div className="w-full max-w-lg space-y-6">
+        <div className="text-center space-y-2">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+            <Phone className="h-8 w-8 text-primary" />
+          </div>
+          <h1 className="text-2xl font-bold">New Order</h1>
+          <p className="text-muted-foreground">Enter customer phone number to get started</p>
+        </div>
+
+        {/* Phone Search */}
+        <div className="flex gap-2">
+          <Input
+            placeholder="Enter phone number..."
+            value={phoneQuery}
+            onChange={(e) => setPhoneQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
+            className="h-12 text-lg"
+            autoFocus
+          />
+          <Button onClick={handleSearch} disabled={searching} className="h-12 px-6">
+            {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+          </Button>
+        </div>
+
+        {/* Customer Found */}
+        {searched && foundCustomer && (
+          <Card>
+            <CardContent className="pt-6 space-y-4">
+              <div className="flex items-center gap-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                  <User className="h-6 w-6 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-lg">
+                    {foundCustomer.first_name} {foundCustomer.last_name || ''}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">{foundCustomer.phone}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-lg font-bold">{foundCustomer.total_orders}</p>
+                  <p className="text-xs text-muted-foreground">Orders</p>
+                </div>
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-lg font-bold">
+                    ₹{Number(foundCustomer.total_spent || 0).toFixed(0)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Spent</p>
+                </div>
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-lg font-bold flex items-center justify-center gap-1">
+                    <Star className="h-4 w-4 text-yellow-500" />
+                    {foundCustomer.loyalty_points}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Points</p>
+                </div>
+              </div>
+
+              {/* Recent Orders */}
+              {loadingOrders ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  <span className="text-sm text-muted-foreground">Loading orders...</span>
+                </div>
+              ) : recentOrders.length > 0 ? (
+                <div>
+                  <h4 className="text-sm font-medium mb-2">Recent Orders</h4>
+                  <div className="space-y-2">
+                    {recentOrders.map((order: any) => (
+                      <div key={order.id} className="flex justify-between items-center bg-muted/50 rounded-lg px-3 py-2 text-sm">
+                        <div className="min-w-0">
+                          <span className="font-medium">#{order.order_number || order.id?.slice(-6)}</span>
+                          <span className="text-muted-foreground ml-2">
+                            {order.created_at ? new Date(order.created_at).toLocaleDateString() : ''}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className={cn(
+                            'text-xs px-2 py-0.5 rounded-full',
+                            order.status === 'COMPLETED' ? 'bg-green-500/10 text-green-600' :
+                            order.status === 'PENDING' ? 'bg-yellow-500/10 text-yellow-600' :
+                            'bg-muted text-muted-foreground'
+                          )}>
+                            {order.status}
+                          </span>
+                          <span className="font-medium">₹{Number(order.total_amount || 0).toFixed(0)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              <Button className="w-full h-12 text-base" onClick={() => onCustomerSelected(foundCustomer)}>
+                Start Order
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Customer Not Found */}
+        {searched && !foundCustomer && !showAddForm && (
+          <Card>
+            <CardContent className="pt-6 text-center space-y-4">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                <User className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Customer not found</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  No customer with this phone number exists
+                </p>
+              </div>
+              <Button onClick={() => setShowAddForm(true)} className="w-full">
+                <UserPlus className="h-4 w-4 mr-2" />
+                Add New Customer
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Add Customer Form */}
+        {showAddForm && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Add New Customer</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CustomerForm
+                onSuccess={handleCustomerCreated}
+                onCancel={() => setShowAddForm(false)}
+              />
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Skip Button */}
+        <div className="text-center">
+          <Button variant="ghost" onClick={onSkip} className="text-muted-foreground">
+            <SkipForward className="h-4 w-4 mr-2" />
+            Skip — Continue without customer
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Menu / Cart Step ─────────────────────────────────────────────────
+
 export default function OrdersPage() {
   const { categories, isLoading: menuLoading, loadMenu } = useMenuStore();
-  const { 
-    cart, 
-    addToCart, 
-    updateCartItem, 
-    removeFromCart, 
-    getCartSubtotal, 
-    getCartTax, 
-    getCartTotal, 
-    createOrder, 
+  const {
+    cart,
+    addToCart,
+    updateCartItem,
+    removeFromCart,
+    getCartSubtotal,
+    getCartTotal,
+    createOrder,
     setCustomerInfo,
+    clearCustomerInfo,
+    clearCart,
     isLoading: orderLoading
   } = useOrderStore();
+
+  const [step, setStep] = useState<OrderStep>('customer');
+  const [orderCustomer, setOrderCustomer] = useState<Customer | null>(null);
 
   const [selectedCategory, setSelectedCategory] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -46,11 +309,9 @@ export default function OrdersPage() {
   const [quantity, setQuantity] = useState(1);
   const [selectedAddons, setSelectedAddons] = useState<{ addon: Addon; quantity: number }[]>([]);
   const [showCheckout, setShowCheckout] = useState(false);
-  const [phone, setPhone] = useState('');
-  const [name, setName] = useState('');
-  const [cartSubtotal, setCartSubtotal] = useState(0);
-  const [cartTax, setCartTax] = useState(0);
-  const [cartTotal, setCartTotal] = useState(0);
+  const [showCart, setShowCart] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'UPI'>('CASH');
+  const [orderNotes, setOrderNotes] = useState('');
 
   // Load menu data on mount
   useEffect(() => {
@@ -64,28 +325,34 @@ export default function OrdersPage() {
     }
   }, [categories, selectedCategory]);
 
-  // Update cart totals when cart changes
-  useEffect(() => {
-    const updateTotals = async () => {
-      try {
-        const subtotal = await getCartSubtotal();
-        const tax = await getCartTax();
-        const total = await getCartTotal();
-        setCartSubtotal(subtotal);
-        setCartTax(tax);
-        setCartTotal(total);
-      } catch (error) {
-        console.error('Error calculating totals:', error);
-      }
-    };
-
-    updateTotals();
-  }, [cart, getCartSubtotal, getCartTax, getCartTotal]);
+  // Cart totals (sync, no tax)
+  const cartSubtotal = useMemo(() => getCartSubtotal(), [cart, getCartSubtotal]);
+  const cartTotal = useMemo(() => getCartTotal(), [cart, getCartTotal]);
 
   const currentCategory = categories?.find((c) => c.id === selectedCategory);
   const filteredItems = currentCategory?.items?.filter((item) =>
     item.name.toLowerCase().includes(searchQuery.toLowerCase()) && item.isAvailable
   ) || [];
+
+  const handleCustomerSelected = (customer: Customer) => {
+    setOrderCustomer(customer);
+    setCustomerInfo(
+      customer.phone,
+      `${customer.first_name} ${customer.last_name || ''}`.trim(),
+      customer.id
+    );
+    setStep('menu');
+  };
+
+  const handleSkipCustomer = () => {
+    setOrderCustomer(null);
+    clearCustomerInfo();
+    setStep('menu');
+  };
+
+  const handleChangeCustomer = () => {
+    setStep('customer');
+  };
 
   const handleSelectItem = (item: MenuItem) => {
     setSelectedItem(item);
@@ -96,7 +363,7 @@ export default function OrdersPage() {
 
   const handleAddToCart = () => {
     if (!selectedItem) return;
-    
+
     addToCart(selectedItem, selectedVariants, quantity, selectedAddons);
     toast.success(`${selectedItem.name} added to cart`);
     setSelectedItem(null);
@@ -124,16 +391,31 @@ export default function OrdersPage() {
 
   const handlePlaceOrder = async () => {
     try {
-      setCustomerInfo(phone, name);
-      await createOrder('CASH'); // Default to cash payment
-      toast.success(`Order placed successfully!`);
+      await createOrder(paymentMethod, orderNotes || undefined);
+      toast.success('Order placed successfully!');
       setShowCheckout(false);
-      setPhone('');
-      setName('');
+      setShowCart(false);
+      setPaymentMethod('CASH');
+      setOrderNotes('');
+      setOrderCustomer(null);
+      setStep('customer');
     } catch (error: any) {
       toast.error(error.message || 'Failed to place order');
     }
   };
+
+  // ─── Customer Step ────────────────────────────────────────────
+
+  if (step === 'customer') {
+    return (
+      <CustomerLookupStep
+        onCustomerSelected={handleCustomerSelected}
+        onSkip={handleSkipCustomer}
+      />
+    );
+  }
+
+  // ─── Menu Step ────────────────────────────────────────────────
 
   if (menuLoading && (!categories || categories.length === 0)) {
     return (
@@ -144,142 +426,170 @@ export default function OrdersPage() {
     );
   }
 
+  // Dynamic price in dialog
+  const currentDialogPrice = selectedItem
+    ? dialogPrice(selectedItem, selectedVariants, selectedAddons, quantity)
+    : 0;
+
   return (
-    <div className="flex flex-col lg:flex-row gap-4 h-[calc(100vh-8rem)]">
-      {/* Menu Section */}
-      <div className="flex-1 flex flex-col min-h-0">
-        <div className="mb-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input 
-              placeholder="Search menu..." 
-              value={searchQuery} 
-              onChange={(e) => setSearchQuery(e.target.value)} 
-              className="pl-10 h-12" 
-            />
+    <div className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden">
+      {/* Customer bar */}
+      <div className="shrink-0 flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2 mx-1 mb-3">
+        {orderCustomer ? (
+          <div className="flex items-center gap-2 min-w-0">
+            <User className="h-4 w-4 text-primary shrink-0" />
+            <span className="text-sm font-medium truncate">
+              {orderCustomer.first_name} {orderCustomer.last_name || ''}
+            </span>
+            <span className="text-xs text-muted-foreground shrink-0">{orderCustomer.phone}</span>
           </div>
-        </div>
-
-        {/* Category Tabs */}
-        <ScrollArea className="w-full whitespace-nowrap mb-4">
-          <Tabs value={selectedCategory} onValueChange={setSelectedCategory}>
-            <TabsList className="inline-flex h-auto p-1">
-              {categories?.map((cat) => (
-                <TabsTrigger key={cat.id} value={cat.id} className="px-4 py-2 text-sm">
-                  {cat.name}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-        </ScrollArea>
-
-        {/* Menu Items Grid */}
-        <ScrollArea className="flex-1">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 pb-4">
-            {filteredItems.map((item) => (
-              <Card key={item.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => handleSelectItem(item)}>
-                <CardContent className="p-3">
-                  <div className="flex items-start gap-2 mb-2">
-                    <div className={cn('h-3 w-3 rounded-full mt-1', dietColors[item.dietType])} />
-                    <h3 className="font-medium text-sm leading-tight">{item.name}</h3>
-                  </div>
-                  <p className="text-primary font-bold">₹{item.basePrice}</p>
-                  {item.description && (
-                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{item.description}</p>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </ScrollArea>
+        ) : (
+          <p className="text-sm text-muted-foreground">Walk-in customer</p>
+        )}
+        <Button variant="ghost" size="sm" className="shrink-0 text-xs h-7" onClick={handleChangeCustomer}>
+          {orderCustomer ? 'Change' : 'Add Customer'}
+        </Button>
       </div>
 
-      {/* Cart Section */}
-      <Card className="lg:w-80 flex flex-col">
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <ShoppingCart className="h-5 w-5" />
-            Cart ({cart.length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex-1 flex flex-col min-h-0 p-3">
-          <ScrollArea className="flex-1 -mx-3 px-3">
-            {cart.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">Cart is empty</p>
-            ) : (
-              <div className="space-y-3">
-                {cart.map((item) => (
-                  <div key={item.id} className="bg-muted/50 rounded-lg p-3">
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex-1">
-                        <p className="font-medium text-sm">{item.menuItem.name}</p>
-                        <p className="text-xs text-muted-foreground">
+      {/* Search */}
+      <div className="shrink-0 px-1 mb-3">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search menu..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10 h-10"
+          />
+        </div>
+      </div>
+
+      {/* Category Tabs - wrapping */}
+      <div className="shrink-0 px-1 mb-3">
+        <div className="flex flex-wrap gap-2">
+          {categories?.map((cat) => (
+            <button
+              key={cat.id}
+              onClick={() => setSelectedCategory(cat.id)}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                selectedCategory === cat.id
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+              )}
+            >
+              {cat.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Menu Items Grid - takes remaining space */}
+      <div className="flex-1 overflow-y-auto px-1 pb-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+          {filteredItems.map((item) => (
+            <button
+              key={item.id}
+              className="text-left bg-card border rounded-lg p-3 hover:shadow-md transition-shadow active:scale-[0.98]"
+              onClick={() => handleSelectItem(item)}
+            >
+              <div className="flex items-start gap-2 mb-1">
+                <div className={cn('h-2.5 w-2.5 rounded-full mt-1 shrink-0', dietColors[item.dietType])} />
+                <h3 className="font-medium text-sm leading-tight line-clamp-2">{item.name}</h3>
+              </div>
+              <p className="text-primary font-bold text-sm">
+                {item.hasVariants && item.variants?.length > 0 ? (
+                  <>₹{itemDisplayPrice(item)}<span className="text-xs font-normal text-muted-foreground ml-1">+</span></>
+                ) : (
+                  <>₹{item.basePrice}</>
+                )}
+              </p>
+            </button>
+          ))}
+        </div>
+        {filteredItems.length === 0 && (
+          <p className="text-center text-muted-foreground py-12">No items found</p>
+        )}
+      </div>
+
+      {/* Sticky Cart Bar at bottom */}
+      {cart.length > 0 && (
+        <div className="shrink-0 border-t bg-card px-3 py-2 safe-area-inset">
+          {/* Expandable cart items */}
+          {showCart && (
+            <div className="max-h-60 overflow-y-auto mb-3 space-y-2 pt-2">
+              {cart.map((item) => {
+                const unitPrice = calcItemUnitPrice(item);
+                return (
+                  <div key={item.id} className="flex items-center gap-2 bg-muted/50 rounded-lg p-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{item.menuItem.name}</p>
+                      {item.selectedVariants.length > 0 && (
+                        <p className="text-xs text-muted-foreground truncate">
                           {item.selectedVariants.map(v => v.name).join(', ')}
                         </p>
-                        {item.addonSelections.length > 0 && (
-                          <p className="text-xs text-muted-foreground">
-                            + {item.addonSelections.map(a => `${a.addon.name} (${a.quantity})`).join(', ')}
-                          </p>
-                        )}
-                      </div>
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeFromCart(item.id)}>
-                        <Trash2 className="h-3 w-3 text-destructive" />
+                      )}
+                      {item.addonSelections.length > 0 && (
+                        <p className="text-xs text-muted-foreground truncate">
+                          + {item.addonSelections.map(a => a.addon.name).join(', ')}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => updateCartItem(item.id, { quantity: Math.max(1, item.quantity - 1) })}
+                      >
+                        <Minus className="h-3 w-3" />
+                      </Button>
+                      <span className="w-5 text-center text-xs">{item.quantity}</span>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => updateCartItem(item.id, { quantity: item.quantity + 1 })}
+                      >
+                        <Plus className="h-3 w-3" />
                       </Button>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center gap-2">
-                        <Button 
-                          variant="outline" 
-                          size="icon" 
-                          className="h-7 w-7" 
-                          onClick={() => updateCartItem(item.id, { quantity: Math.max(1, item.quantity - 1) })}
-                        >
-                          <Minus className="h-3 w-3" />
-                        </Button>
-                        <span className="w-6 text-center text-sm">{item.quantity}</span>
-                        <Button 
-                          variant="outline" 
-                          size="icon" 
-                          className="h-7 w-7" 
-                          onClick={() => updateCartItem(item.id, { quantity: item.quantity + 1 })}
-                        >
-                          <Plus className="h-3 w-3" />
-                        </Button>
-                      </div>
-                      <p className="font-bold">₹{item.menuItem.basePrice * item.quantity}</p>
-                    </div>
+                    <p className="text-sm font-bold shrink-0 w-16 text-right">₹{(unitPrice * item.quantity).toFixed(0)}</p>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => removeFromCart(item.id)}>
+                      <Trash2 className="h-3 w-3 text-destructive" />
+                    </Button>
                   </div>
-                ))}
-              </div>
-            )}
-          </ScrollArea>
-
-          {cart.length > 0 && (
-            <div className="border-t pt-3 mt-3 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>Subtotal</span>
-                <span>₹{cartSubtotal.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span>Tax (5%)</span>
-                <span>₹{cartTax.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between font-bold text-lg">
-                <span>Total</span>
-                <span>₹{cartTotal.toFixed(2)}</span>
-              </div>
-              <Button className="w-full h-12 text-base" onClick={handleCheckout} disabled={orderLoading}>
-                {orderLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Place Order
-              </Button>
+                );
+              })}
             </div>
           )}
-        </CardContent>
-      </Card>
+
+          {/* Cart summary bar */}
+          <div className="flex items-center gap-2">
+            <button
+              className="flex items-center gap-2 flex-1 min-w-0"
+              onClick={() => setShowCart(!showCart)}
+            >
+              <div className="relative">
+                <ShoppingCart className="h-5 w-5" />
+                <span className="absolute -top-1.5 -right-1.5 bg-primary text-primary-foreground text-[10px] font-bold rounded-full h-4 w-4 flex items-center justify-center">
+                  {cart.length}
+                </span>
+              </div>
+              <span className="font-bold text-lg">₹{cartTotal.toFixed(0)}</span>
+              <ChevronUp className={cn('h-4 w-4 text-muted-foreground transition-transform', showCart && 'rotate-180')} />
+            </button>
+            <Button className="h-10 px-6" onClick={handleCheckout} disabled={orderLoading}>
+              {orderLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Place Order
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Item Selection Dialog */}
       <Dialog open={!!selectedItem} onOpenChange={() => setSelectedItem(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <div className={cn('h-3 w-3 rounded-full', selectedItem && dietColors[selectedItem.dietType])} />
@@ -289,9 +599,9 @@ export default function OrdersPage() {
 
           {selectedItem && (
             <div className="space-y-4">
-              {/* Base Price */}
+              {/* Dynamic Price */}
               <div className="text-center">
-                <p className="text-2xl font-bold text-primary">₹{selectedItem.basePrice}</p>
+                <p className="text-2xl font-bold text-primary">₹{currentDialogPrice.toFixed(0)}</p>
                 {selectedItem.description && (
                   <p className="text-sm text-muted-foreground mt-1">{selectedItem.description}</p>
                 )}
@@ -305,10 +615,10 @@ export default function OrdersPage() {
                     {selectedItem.variants.map((variant) => {
                       const isSelected = selectedVariants.some(v => v.id === variant.id);
                       return (
-                        <Button 
-                          key={variant.id} 
-                          variant={isSelected ? 'default' : 'outline'} 
-                          size="sm" 
+                        <Button
+                          key={variant.id}
+                          variant={isSelected ? 'default' : 'outline'}
+                          size="sm"
                           onClick={() => {
                             if (isSelected) {
                               setSelectedVariants(selectedVariants.filter(v => v.id !== variant.id));
@@ -317,7 +627,7 @@ export default function OrdersPage() {
                             }
                           }}
                         >
-                          {variant.name} {variant.price > 0 && `+₹${variant.price}`}
+                          {variant.name} — ₹{variant.price}
                         </Button>
                       );
                     })}
@@ -333,11 +643,11 @@ export default function OrdersPage() {
                     {selectedItem.addons.map((addon) => {
                       const isSelected = selectedAddons.some((a) => a.addon.id === addon.id);
                       return (
-                        <Button 
-                          key={addon.id} 
-                          variant={isSelected ? 'default' : 'outline'} 
-                          size="sm" 
-                          className="justify-start" 
+                        <Button
+                          key={addon.id}
+                          variant={isSelected ? 'default' : 'outline'}
+                          size="sm"
+                          className="justify-start"
                           onClick={() => toggleAddon(addon)}
                         >
                           {isSelected && <Check className="h-3 w-3 mr-1" />}
@@ -363,8 +673,8 @@ export default function OrdersPage() {
                 </div>
               </div>
 
-              <Button className="w-full" onClick={handleAddToCart}>
-                Add to Cart
+              <Button className="w-full h-12" onClick={handleAddToCart}>
+                Add to Cart — ₹{currentDialogPrice.toFixed(0)}
               </Button>
             </div>
           )}
@@ -373,47 +683,87 @@ export default function OrdersPage() {
 
       {/* Checkout Dialog */}
       <Dialog open={showCheckout} onOpenChange={setShowCheckout}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Checkout</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Receipt className="h-5 w-5" />
+              Checkout
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {/* Customer Info Summary */}
+            {orderCustomer ? (
+              <div className="flex items-center gap-3 bg-muted/50 rounded-lg p-3">
+                <User className="h-5 w-5 text-primary" />
+                <div>
+                  <p className="font-medium">
+                    {orderCustomer.first_name} {orderCustomer.last_name || ''}
+                  </p>
+                  <p className="text-sm text-muted-foreground">{orderCustomer.phone}</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-3">Walk-in customer (no customer linked)</p>
+            )}
+
+            {/* Payment Method */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Customer Phone</label>
-              <Input 
-                placeholder="Enter phone number" 
-                value={phone} 
-                onChange={(e) => setPhone(e.target.value)} 
+              <label className="text-sm font-medium">Payment Method</label>
+              <div className="flex gap-2">
+                {(['CASH', 'CARD', 'UPI'] as const).map(method => (
+                  <Button
+                    key={method}
+                    variant={paymentMethod === method ? 'default' : 'outline'}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setPaymentMethod(method)}
+                  >
+                    {method === 'CASH' && <CreditCard className="h-3 w-3 mr-1" />}
+                    {method}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {/* Order Notes */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Notes (optional)</label>
+              <Input
+                placeholder="Any special instructions..."
+                value={orderNotes}
+                onChange={(e) => setOrderNotes(e.target.value)}
               />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Customer Name</label>
-              <Input 
-                placeholder="Enter customer name" 
-                value={name} 
-                onChange={(e) => setName(e.target.value)} 
-              />
-            </div>
+
+            {/* Order Summary */}
             <div className="border-t pt-4 space-y-2">
-              <div className="flex justify-between">
-                <span>Subtotal</span>
-                <span>₹{cartSubtotal.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Tax (5%)</span>
-                <span>₹{cartTax.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between font-bold text-lg">
-                <span>Total</span>
-                <span>₹{cartTotal.toFixed(2)}</span>
+              {cart.map((item) => {
+                const unitPrice = calcItemUnitPrice(item);
+                return (
+                  <div key={item.id} className="flex justify-between text-sm gap-2">
+                    <span className="text-muted-foreground min-w-0 truncate">
+                      {item.menuItem.name} x{item.quantity}
+                      {item.selectedVariants.length > 0 && (
+                        <> ({item.selectedVariants.map(v => v.name).join(', ')})</>
+                      )}
+                    </span>
+                    <span className="shrink-0">₹{(unitPrice * item.quantity).toFixed(0)}</span>
+                  </div>
+                );
+              })}
+              <div className="border-t pt-2 mt-2">
+                <div className="flex justify-between font-bold text-lg">
+                  <span>Total</span>
+                  <span>₹{cartTotal.toFixed(0)}</span>
+                </div>
               </div>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCheckout(false)}>Cancel</Button>
-            <Button onClick={handlePlaceOrder} disabled={orderLoading}>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setShowCheckout(false)} className="w-full sm:w-auto">Cancel</Button>
+            <Button onClick={handlePlaceOrder} disabled={orderLoading} className="w-full sm:w-auto">
               {orderLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Place Order
+              Place Order — ₹{cartTotal.toFixed(0)}
             </Button>
           </DialogFooter>
         </DialogContent>
