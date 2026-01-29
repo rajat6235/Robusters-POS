@@ -63,7 +63,7 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
     return { name: 'Bronze', color: 'bg-orange-500' };
   };
 
-  const tier = getCustomerTier(customer.total_spent);
+  const tier = getCustomerTier(Number(customer.total_spent || 0));
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -82,7 +82,7 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
             </h2>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               <Badge className={tier.color}>{tier.name}</Badge>
-              {customer.total_orders > 10 && (
+              {Number(customer.total_orders || 0) > 10 && (
                 <Badge variant="secondary">VIP Customer</Badge>
               )}
             </div>
@@ -102,7 +102,7 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
               <ShoppingBag className="h-4 w-4 text-blue-500 flex-shrink-0" />
               <div className="min-w-0">
                 <p className="text-xs sm:text-sm text-muted-foreground truncate">Total Orders</p>
-                <p className="text-lg sm:text-2xl font-bold">{customer.total_orders}</p>
+                <p className="text-lg sm:text-2xl font-bold">{Number(customer.total_orders || 0)}</p>
               </div>
             </div>
           </CardContent>
@@ -114,7 +114,7 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
               <DollarSign className="h-4 w-4 text-green-500 flex-shrink-0" />
               <div className="min-w-0">
                 <p className="text-xs sm:text-sm text-muted-foreground truncate">Total Spent</p>
-                <p className="text-lg sm:text-2xl font-bold truncate">{formatCurrency(customer.total_spent)}</p>
+                <p className="text-lg sm:text-2xl font-bold truncate">{formatCurrency(Number(customer.total_spent || 0))}</p>
               </div>
             </div>
           </CardContent>
@@ -139,11 +139,9 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
               <div className="min-w-0">
                 <p className="text-xs sm:text-sm text-muted-foreground truncate">Avg Order Value</p>
                 <p className="text-lg sm:text-2xl font-bold truncate">
-                  {customer.total_orders > 0 
+                  {Number(customer.total_orders || 0) > 0 
                     ? formatCurrency(
-                        (typeof customer.total_spent === 'string' 
-                          ? parseFloat(customer.total_spent) 
-                          : customer.total_spent) / customer.total_orders
+                        Number(customer.total_spent || 0) / Number(customer.total_orders || 1)
                       )
                     : '₹0.00'
                   }

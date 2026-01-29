@@ -35,8 +35,8 @@ const dietColors: Record<string, string> = {
 
 export function MenuItemCard({ item, onAddToOrder, showAdminControls, onEditItem }: MenuItemCardProps) {
   const { user } = useAuth();
-  const isManager = user?.role === 'manager';
-  const isAdmin = user?.role === 'admin';
+  const isManager = user?.role === 'MANAGER';
+  const isAdmin = user?.role === 'ADMIN';
 
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
@@ -49,7 +49,8 @@ export function MenuItemCard({ item, onAddToOrder, showAdminControls, onEditItem
   // Set default variant on mount
   useEffect(() => {
     if (item.variants && item.variants.length > 0) {
-      const defaultVariant = item.variants.find(v => v.isDefault) || item.variants[0];
+      // Use the first variant as default since isDefault property doesn't exist
+      const defaultVariant = item.variants[0];
       setSelectedVariantId(defaultVariant.id);
     }
   }, [item.variants]);
@@ -60,12 +61,16 @@ export function MenuItemCard({ item, onAddToOrder, showAdminControls, onEditItem
 
     try {
       const response = await calculatePrice.mutateAsync({
-        itemId: item.id,
+        menuItemId: item.id,
         variantId: selectedVariantId || undefined,
-        addonIds: selectedAddonIds.length > 0 ? selectedAddonIds : undefined,
-        quantity: 1,
+        addons: selectedAddonIds.length > 0 
+          ? selectedAddonIds.map(id => ({ addonId: id, quantity: 1 }))
+          : undefined,
       });
-      setPriceBreakdown(response.data);
+      setPriceBreakdown({
+        ...response.data,
+        quantity: 1, // Add the missing quantity property
+      });
     } catch (error) {
       // Fallback to local calculation if API fails
       const variant = item.variants?.find(v => v.id === selectedVariantId);

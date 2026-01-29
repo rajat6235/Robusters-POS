@@ -13,7 +13,7 @@ export function AddonSelector({ addons, selectedAddonIds, onToggleAddon }: Addon
 
   // Group addons by type
   const addonsByType = addons.reduce((acc, addon) => {
-    const type = addon.type || 'Other';
+    const type = addon.addonGroup || 'Other';
     if (!acc[type]) acc[type] = [];
     acc[type].push(addon);
     return acc;

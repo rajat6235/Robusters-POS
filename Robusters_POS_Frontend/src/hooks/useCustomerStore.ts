@@ -123,14 +123,14 @@ export const useCustomerStore = create<CustomerStore>()(
         set({ isLoading: true, error: null });
         try {
           const response = await customerService.searchCustomers(query);
-          const customer = response.data.customer;
+          const customers = response.data.customers;
           
           set({ 
-            searchResults: customer ? [customer] : [],
+            searchResults: customers || [],
             isLoading: false 
           });
           
-          return customer;
+          return customers[0] || null; // Return first customer or null
         } catch (error: any) {
           set({ 
             error: error.response?.data?.message || error.message || 'Failed to search customers',

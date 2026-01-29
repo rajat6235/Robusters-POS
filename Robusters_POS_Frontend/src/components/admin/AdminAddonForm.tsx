@@ -1,7 +1,7 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Addon, CreateAddonRequest } from '@/types/menu';
+import { Addon, CreateAddonRequest, UpdateAddonRequest } from '@/types/menu';
 import { useCreateAddon, useUpdateAddon } from '@/hooks/useMenu';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,8 +12,9 @@ import { Loader2 } from 'lucide-react';
 const addonSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
   price: z.coerce.number().min(0, 'Price must be positive'),
-  quantity: z.string().max(50).optional(),
-  type: z.string().max(50).optional(),
+  unit: z.string().max(50).optional(),
+  unitQuantity: z.coerce.number().min(0).optional(),
+  addonGroup: z.string().max(50).optional(),
   isAvailable: z.boolean(),
 });
 
@@ -41,8 +42,9 @@ export function AdminAddonForm({ addon, onSuccess, onCancel }: AdminAddonFormPro
     defaultValues: {
       name: addon?.name || '',
       price: addon?.price || 0,
-      quantity: addon?.quantity || '',
-      type: addon?.type || '',
+      unit: addon?.unit || '',
+      unitQuantity: addon?.unitQuantity || 0,
+      addonGroup: addon?.addonGroup || '',
       isAvailable: addon?.isAvailable ?? true,
     },
   });
@@ -51,18 +53,25 @@ export function AdminAddonForm({ addon, onSuccess, onCancel }: AdminAddonFormPro
 
   const onSubmit = async (data: AddonFormData) => {
     try {
-      const payload: CreateAddonRequest = {
-        name: data.name,
-        price: data.price,
-        quantity: data.quantity,
-        type: data.type,
-        isAvailable: data.isAvailable,
-      };
-      
       if (isEditing && addon) {
-        await updateAddon.mutateAsync({ id: addon.id, data: payload });
+        const updatePayload: UpdateAddonRequest = {
+          name: data.name,
+          price: data.price,
+          unit: data.unit,
+          unitQuantity: data.unitQuantity,
+          addonGroup: data.addonGroup,
+          isAvailable: data.isAvailable,
+        };
+        await updateAddon.mutateAsync({ id: addon.id, data: updatePayload });
       } else {
-        await createAddon.mutateAsync(payload);
+        const createPayload: CreateAddonRequest = {
+          name: data.name,
+          price: data.price,
+          unit: data.unit,
+          unitQuantity: data.unitQuantity,
+          addonGroup: data.addonGroup,
+        };
+        await createAddon.mutateAsync(createPayload);
       }
       onSuccess();
     } catch (error) {
@@ -101,23 +110,37 @@ export function AdminAddonForm({ addon, onSuccess, onCancel }: AdminAddonFormPro
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="quantity">Quantity</Label>
+          <Label htmlFor="unitQuantity">Unit Quantity</Label>
           <Input
-            id="quantity"
-            placeholder="e.g., 100g, 1 pc"
-            {...register('quantity')}
+            id="unitQuantity"
+            type="number"
+            min={0}
+            step={1}
+            placeholder="e.g., 100, 1"
+            {...register('unitQuantity')}
           />
         </div>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="type">Type/Group</Label>
-        <Input
-          id="type"
-          placeholder="e.g., Protein, Carbs, Extras"
-          {...register('type')}
-        />
-        <p className="text-xs text-muted-foreground">Used to group add-ons in the UI</p>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="unit">Unit</Label>
+          <Input
+            id="unit"
+            placeholder="e.g., g, pc, ml"
+            {...register('unit')}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="addonGroup">Group</Label>
+          <Input
+            id="addonGroup"
+            placeholder="e.g., Protein, Carbs, Extras"
+            {...register('addonGroup')}
+          />
+          <p className="text-xs text-muted-foreground">Used to group add-ons in the UI</p>
+        </div>
       </div>
 
       <div className="flex items-center justify-between rounded-lg border p-3">

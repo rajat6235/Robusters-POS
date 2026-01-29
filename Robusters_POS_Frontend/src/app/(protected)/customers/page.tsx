@@ -154,7 +154,7 @@ export default function CustomersPage() {
               <div className="min-w-0">
                 <p className="text-xs sm:text-sm text-muted-foreground truncate">Total Revenue</p>
                 <p className="text-lg sm:text-2xl font-bold truncate">
-                  {formatCurrency(customers.reduce((sum, c) => sum + c.total_spent, 0))}
+                  {formatCurrency(customers.reduce((sum, c) => sum + Number(c.total_spent || 0), 0))}
                 </p>
               </div>
             </div>
@@ -168,7 +168,7 @@ export default function CustomersPage() {
               <div className="min-w-0">
                 <p className="text-xs sm:text-sm text-muted-foreground truncate">Total Orders</p>
                 <p className="text-lg sm:text-2xl font-bold">
-                  {customers.reduce((sum, c) => sum + c.total_orders, 0)}
+                  {customers.reduce((sum, c) => sum + Number(c.total_orders || 0), 0)}
                 </p>
               </div>
             </div>
@@ -220,7 +220,7 @@ export default function CustomersPage() {
                         <h3 className="font-medium text-sm sm:text-base truncate">
                           {customer.first_name} {customer.last_name || ''}
                         </h3>
-                        {customer.total_orders > 10 && (
+                        {Number(customer.total_orders || 0) > 10 && (
                           <Badge variant="secondary" className="text-xs">VIP</Badge>
                         )}
                       </div>
@@ -240,12 +240,12 @@ export default function CustomersPage() {
                         
                         <div className="flex items-center gap-1">
                           <ShoppingBag className="h-3 w-3 flex-shrink-0" />
-                          <span>{customer.total_orders} orders</span>
+                          <span>{Number(customer.total_orders || 0)} orders</span>
                         </div>
                         
                         <div className="flex items-center gap-1">
                           <DollarSign className="h-3 w-3 flex-shrink-0" />
-                          <span>{formatCurrency(customer.total_spent)}</span>
+                          <span>{formatCurrency(Number(customer.total_spent || 0))}</span>
                         </div>
                       </div>
                     </div>

@@ -77,7 +77,7 @@ export function MenuView({ onAddToOrder }: MenuViewProps) {
               key={item.id}
               item={item}
               onAddToOrder={onAddToOrder}
-              showAdminControls={user?.role === 'admin'}
+              showAdminControls={user?.role === 'ADMIN'}
             />
           ))}
         </div>

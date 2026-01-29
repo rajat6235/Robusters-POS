@@ -67,6 +67,14 @@ export interface MenuResponse {
 }
 
 // Price calculation types
+export interface PriceBreakdown {
+  basePrice: number;
+  variantPrice: number;
+  addonsPrice: number;
+  totalPrice: number;
+  quantity: number;
+}
+
 export interface CalculatePriceRequest {
   menuItemId: string;
   variantId?: string;

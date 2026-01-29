@@ -1,7 +1,7 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { MenuCategory, CreateCategoryRequest } from '@/types/menu';
+import { MenuCategory, CreateCategoryRequest, UpdateCategoryRequest } from '@/types/menu';
 import { useCreateCategory, useUpdateCategory } from '@/hooks/useMenu';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -43,16 +43,20 @@ export function AdminCategoryForm({ category, onSuccess, onCancel }: AdminCatego
 
   const onSubmit = async (data: CategoryFormData) => {
     try {
-      const payload: CreateCategoryRequest = {
-        name: data.name,
-        description: data.description,
-        displayOrder: data.displayOrder,
-      };
-      
       if (isEditing && category) {
-        await updateCategory.mutateAsync({ id: category.id, data: payload });
+        const updatePayload: UpdateCategoryRequest = {
+          name: data.name,
+          description: data.description,
+          displayOrder: data.displayOrder,
+        };
+        await updateCategory.mutateAsync({ id: category.id, data: updatePayload });
       } else {
-        await createCategory.mutateAsync(payload);
+        const createPayload: CreateCategoryRequest = {
+          name: data.name,
+          description: data.description,
+          displayOrder: data.displayOrder,
+        };
+        await createCategory.mutateAsync(createPayload);
       }
       onSuccess();
     } catch (error) {

@@ -114,7 +114,7 @@ export default function DashboardPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold lg:text-3xl">
-            Welcome back, {user?.name?.split(' ')[0]}
+            Welcome back, {user?.firstName}
           </h1>
           <p className="text-muted-foreground">
             Here&apos;s what&apos;s happening at Robusters today.

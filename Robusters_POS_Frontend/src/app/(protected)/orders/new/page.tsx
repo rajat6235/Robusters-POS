@@ -176,7 +176,7 @@ function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps)
                       <p className="text-xs text-muted-foreground">{cust.phone}</p>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-xs text-muted-foreground">{cust.total_orders} orders</p>
+                      <p className="text-xs text-muted-foreground">{Number(cust.total_orders || 0)} orders</p>
                     </div>
                   </button>
                 ))}
@@ -208,7 +208,7 @@ function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps)
 
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div className="bg-muted/50 rounded-lg p-3">
-                  <p className="text-lg font-bold">{selectedCustomer.total_orders}</p>
+                  <p className="text-lg font-bold">{Number(selectedCustomer.total_orders || 0)}</p>
                   <p className="text-xs text-muted-foreground">Orders</p>
                 </div>
                 <div className="bg-muted/50 rounded-lg p-3">

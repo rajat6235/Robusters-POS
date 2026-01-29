@@ -1,7 +1,7 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { MenuItem, MenuCategory, DietType, CreateMenuItemRequest } from '@/types/menu';
+import { MenuItem, MenuCategory, DietType, CreateMenuItemRequest, UpdateMenuItemRequest } from '@/types/menu';
 import { useCreateItem, useUpdateItem } from '@/hooks/useMenu';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -67,20 +67,27 @@ export function AdminItemForm({ item, categories, defaultCategoryId, onSuccess, 
 
   const onSubmit = async (data: ItemFormData) => {
     try {
-      const payload: CreateMenuItemRequest = {
-        name: data.name,
-        description: data.description,
-        categoryId: data.categoryId,
-        dietType: data.dietType,
-        basePrice: data.basePrice,
-        displayOrder: data.displayOrder,
-        isAvailable: data.isAvailable,
-      };
-      
       if (isEditing && item) {
-        await updateItem.mutateAsync({ id: item.id, data: payload });
+        const updatePayload: UpdateMenuItemRequest = {
+          name: data.name,
+          description: data.description,
+          categoryId: data.categoryId,
+          dietType: data.dietType,
+          basePrice: data.basePrice,
+          displayOrder: data.displayOrder,
+          isAvailable: data.isAvailable,
+        };
+        await updateItem.mutateAsync({ id: item.id, data: updatePayload });
       } else {
-        await createItem.mutateAsync(payload);
+        const createPayload: CreateMenuItemRequest = {
+          name: data.name,
+          description: data.description,
+          categoryId: data.categoryId,
+          dietType: data.dietType,
+          basePrice: data.basePrice,
+          displayOrder: data.displayOrder,
+        };
+        await createItem.mutateAsync(createPayload);
       }
       onSuccess();
     } catch (error) {
