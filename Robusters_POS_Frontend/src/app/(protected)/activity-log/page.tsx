@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { RefreshCw, ChevronLeft, ChevronRight, Clock, User, Globe } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 
@@ -182,6 +183,63 @@ export default function ActivityLogPage() {
       </CardContent>
     </Card>
   );
+
+  if (isLoading && logs.length === 0) {
+    return (
+      <ProtectedRoute allowedRoles={['ADMIN']}>
+        <div className="space-y-4 md:space-y-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-2">
+              <Skeleton className="h-8 w-36" />
+              <Skeleton className="h-4 w-72" />
+            </div>
+            <Skeleton className="h-9 w-24" />
+          </div>
+          <Card>
+            <CardHeader className="pb-3 md:pb-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
+                  <Skeleton className="h-6 w-32" />
+                  <Skeleton className="h-4 w-24" />
+                </div>
+                <Skeleton className="h-10 w-full sm:w-[180px]" />
+              </div>
+            </CardHeader>
+            <CardContent className="px-3 md:px-6">
+              {/* Mobile skeleton */}
+              <div className="md:hidden space-y-3">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Card key={i} className="mb-3">
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-2">
+                          <Skeleton className="h-5 w-20 rounded-full" />
+                          <Skeleton className="h-4 w-32" />
+                        </div>
+                        <Skeleton className="h-3 w-24" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              {/* Desktop skeleton */}
+              <div className="hidden md:block space-y-3">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-4 py-3 border-b last:border-0">
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-4 w-28" />
+                    <Skeleton className="h-5 w-20 rounded-full" />
+                    <Skeleton className="h-4 w-48 hidden lg:block" />
+                    <Skeleton className="h-4 w-24 hidden xl:block" />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </ProtectedRoute>
+    );
+  }
 
   return (
     <ProtectedRoute allowedRoles={['ADMIN']}>

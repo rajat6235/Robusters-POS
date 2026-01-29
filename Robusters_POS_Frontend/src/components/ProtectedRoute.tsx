@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserRole } from '@/types';
 import { Loader2 } from 'lucide-react';
+import Image from 'next/image';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -35,8 +36,11 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-12 w-12 animate-spin text-primary" />
-          <p className="text-muted-foreground">Loading...</p>
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-black shadow-lg">
+            <Image src="/logo.png" alt="Robusters" width={40} height={40} className="h-10 w-10" />
+          </div>
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Loading...</p>
         </div>
       </div>
     );
