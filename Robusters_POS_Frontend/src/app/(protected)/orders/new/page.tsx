@@ -760,11 +760,11 @@ export default function OrdersPage() {
                           variant={isSelected ? 'default' : 'outline'}
                           size="sm"
                           onClick={() => {
-                            if (isSelected) {
-                              setSelectedVariants(selectedVariants.filter(v => v.id !== variant.id));
-                            } else {
-                              setSelectedVariants([...selectedVariants, variant]);
-                            }
+                            const newVariants = isSelected
+                              ? selectedVariants.filter(v => v.id !== variant.id)
+                              : [...selectedVariants, variant];
+                            setSelectedVariants(newVariants);
+                            setQuantity(Math.max(1, newVariants.length));
                           }}
                         >
                           {variant.name} — ₹{variant.price}
@@ -1013,7 +1013,8 @@ export default function OrdersPage() {
                                 const newVariants = isSelected
                                   ? item.selectedVariants.filter(v => v.id !== variant.id)
                                   : [...item.selectedVariants, variant];
-                                updateCartItem(item.id, { selectedVariants: newVariants });
+                                const newQty = Math.max(1, newVariants.length);
+                                updateCartItem(item.id, { selectedVariants: newVariants, quantity: newQty });
                                 // Clear price override when variants change so price recalculates
                                 if (priceOverrides[item.id] !== undefined) {
                                   setPriceOverrides(prev => {
