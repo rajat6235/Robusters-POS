@@ -51,21 +51,22 @@ const create = async ({
   paymentMethod,
   notes,
   createdBy,
+  locationId,
 }) => {
   const client = await db.getClient();
-  
+
   try {
     await client.query('BEGIN');
-    
+
     // Generate order number
     const orderNumber = await generateOrderNumber();
-    
+
     // Create order
     const orderResult = await client.query(
       `INSERT INTO orders (
         order_number, customer_phone, customer_name, customer_id, subtotal, tax, total,
-        payment_method, payment_status, notes, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        payment_method, payment_status, notes, created_by, location_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *`,
       [
         orderNumber,
@@ -79,6 +80,7 @@ const create = async ({
         PAYMENT_STATUS.PENDING,
         notes,
         createdBy,
+        locationId || null,
       ]
     );
     
@@ -170,15 +172,16 @@ const findAll = async ({
   
   // Get orders
   const ordersResult = await db.query(
-    `SELECT o.*, u.first_name, u.last_name
+    `SELECT o.*, u.first_name, u.last_name, l.name as location_name
      FROM orders o
      LEFT JOIN users u ON u.id = o.created_by
+     LEFT JOIN locations l ON l.id = o.location_id
      ${whereClause}
      ORDER BY o.created_at DESC
      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
     [...values, limit, offset]
   );
-  
+
   return {
     orders: ordersResult.rows,
     pagination: {
@@ -198,9 +201,10 @@ const findAll = async ({
 const findById = async (id) => {
   // Get order
   const orderResult = await db.query(
-    `SELECT o.*, u.first_name, u.last_name
+    `SELECT o.*, u.first_name, u.last_name, l.name as location_name
      FROM orders o
      LEFT JOIN users u ON u.id = o.created_by
+     LEFT JOIN locations l ON l.id = o.location_id
      WHERE o.id = $1`,
     [id]
   );
@@ -374,15 +378,16 @@ const findAllWithItems = async ({
   
   // Get orders
   const ordersResult = await db.query(
-    `SELECT o.*, u.first_name, u.last_name
+    `SELECT o.*, u.first_name, u.last_name, l.name as location_name
      FROM orders o
      LEFT JOIN users u ON u.id = o.created_by
+     LEFT JOIN locations l ON l.id = o.location_id
      ${whereClause}
      ORDER BY o.created_at DESC
      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
     [...values, limit, offset]
   );
-  
+
   // Get detailed items for each order
   const ordersWithItems = [];
   

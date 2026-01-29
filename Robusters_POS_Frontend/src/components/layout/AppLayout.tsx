@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLocationStore } from '@/hooks/useLocationStore';
 import {
   LayoutDashboard,
   UtensilsCrossed,
@@ -15,8 +16,16 @@ import {
   X,
   Shield,
   History,
+  MapPin,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 
 interface NavItemProps {
@@ -43,6 +52,43 @@ const NavItem: React.FC<NavItemProps> = ({ href, icon, label, isActive, onClick 
     <span>{label}</span>
   </Link>
 );
+
+/** Location selector dropdown used in both desktop and mobile sidebar */
+function LocationSelector() {
+  const { locations, selectedLocationId, setSelectedLocation, fetchLocations } = useLocationStore();
+
+  useEffect(() => {
+    fetchLocations();
+  }, [fetchLocations]);
+
+  const activeLocations = locations.filter(l => l.is_active);
+
+  if (activeLocations.length === 0) return null;
+
+  return (
+    <div className="px-4 pb-3">
+      <div className="flex items-center gap-2 mb-1.5">
+        <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-xs font-medium text-muted-foreground">Location</span>
+      </div>
+      <Select
+        value={selectedLocationId || ''}
+        onValueChange={(value) => setSelectedLocation(value)}
+      >
+        <SelectTrigger className="w-full h-9 text-sm">
+          <SelectValue placeholder="Select location" />
+        </SelectTrigger>
+        <SelectContent>
+          {activeLocations.map((loc) => (
+            <SelectItem key={loc.id} value={loc.id}>
+              {loc.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -72,6 +118,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   if (isAdmin) {
     navItems.push(
       { href: '/menu', icon: <UtensilsCrossed className="h-5 w-5" />, label: 'Menu Management' },
+      { href: '/locations', icon: <MapPin className="h-5 w-5" />, label: 'Locations' },
       { href: '/users', icon: <Shield className="h-5 w-5" />, label: 'User Management' },
       { href: '/activity-log', icon: <History className="h-5 w-5" />, label: 'Activity Log' }
     );
@@ -102,7 +149,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             <Image src="/logo.png" alt="Robusters" width={32} height={32} className="h-8 w-8" />
             <span className="text-xl font-bold">Robusters POS</span>
           </div>
-          
+
+          {/* Location Selector */}
+          <div className="pt-3">
+            <LocationSelector />
+          </div>
+
           <nav className="flex-1 space-y-2 p-4">
             {navItems.map((item) => (
               <NavItem
@@ -150,7 +202,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             <Image src="/logo.png" alt="Robusters" width={32} height={32} className="h-8 w-8" />
             <span className="text-xl font-bold">Robusters POS</span>
           </div>
-          
+
+          {/* Location Selector - Mobile */}
+          <div className="pt-3">
+            <LocationSelector />
+          </div>
+
           <nav className="flex-1 space-y-2 p-4">
             {navItems.map((item) => (
               <NavItem

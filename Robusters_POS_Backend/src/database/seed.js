@@ -7,6 +7,7 @@
 require('dotenv').config();
 const db = require('./connection');
 const User = require('../models/User');
+const Location = require('../models/Location');
 
 const DEFAULT_ADMIN = {
   email: 'admin@robusters.com',
@@ -44,6 +45,15 @@ async function seed() {
       console.log('╠════════════════════════════════════════════════════════════╣');
       console.log('║  ⚠️  CHANGE THIS PASSWORD IMMEDIATELY IN PRODUCTION!       ║');
       console.log('╚════════════════════════════════════════════════════════════╝');
+    }
+
+    // Seed default location
+    const existingLocations = await Location.findAll(true);
+    if (existingLocations.length === 0) {
+      await Location.create({ name: 'Phase 9 Main Branch' });
+      console.log('\nDefault location "Phase 9 Main Branch" created.');
+    } else {
+      console.log(`\nLocations already exist (${existingLocations.length}). Skipping location seed.`);
     }
 
     // Show summary

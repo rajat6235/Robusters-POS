@@ -101,6 +101,20 @@ export interface Customer {
   lastOrderAt?: string;
 }
 
+// Location Types
+export interface Location {
+  id: string;
+  name: string;
+  address?: string;
+  phone?: string;
+  isActive: boolean;
+  is_active?: boolean;
+  createdAt?: string;
+  created_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
+}
+
 // API Response Types
 export interface ApiResponse<T> {
   success: boolean;

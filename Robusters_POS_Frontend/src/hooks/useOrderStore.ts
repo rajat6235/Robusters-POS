@@ -51,7 +51,7 @@ interface OrderStore {
   clearCustomerInfo: () => void;
 
   // Order actions
-  createOrder: (paymentMethod: 'CASH' | 'CARD' | 'UPI', notes?: string) => Promise<Order>;
+  createOrder: (paymentMethod: 'CASH' | 'CARD' | 'UPI', notes?: string, locationId?: string) => Promise<Order>;
   loadOrders: (page?: number, limit?: number) => Promise<void>;
 
   // Calculated values (sync)
@@ -111,7 +111,7 @@ export const useOrderStore = create<OrderStore>()(
         set({ customerPhone: '', customerName: '', customerId: null });
       },
 
-      createOrder: async (paymentMethod, notes) => {
+      createOrder: async (paymentMethod, notes, locationId) => {
         const state = get();
         set({ isLoading: true, error: null });
 
@@ -132,7 +132,8 @@ export const useOrderStore = create<OrderStore>()(
             customerName: state.customerName || undefined,
             items: orderItems,
             paymentMethod,
-            notes
+            notes,
+            locationId,
           };
 
           const response = await orderService.createOrder(orderData);

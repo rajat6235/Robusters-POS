@@ -13,6 +13,7 @@ const orderRoutes = require('./orders');
 const customerRoutes = require('./customers');
 const activityLogRoutes = require('./activityLogs');
 const dashboardRoutes = require('./dashboard');
+const locationRoutes = require('./locations');
 
 // Mount routes
 router.use('/auth', authRoutes);
@@ -22,5 +23,6 @@ router.use('/orders', orderRoutes);
 router.use('/customers', customerRoutes);
 router.use('/activity-logs', activityLogRoutes);
 router.use('/dashboard', dashboardRoutes);
+router.use('/locations', locationRoutes);
 
 module.exports = router;

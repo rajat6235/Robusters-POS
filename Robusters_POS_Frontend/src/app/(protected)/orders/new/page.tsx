@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMenuStore } from '@/hooks/useMenuStore';
 import { useOrderStore, calcItemUnitPrice } from '@/hooks/useOrderStore';
+import { useLocationStore } from '@/hooks/useLocationStore';
 import { customerService, Customer } from '@/services/customerService';
 import { CustomerForm } from '@/components/customer/CustomerForm';
 import { MenuItem, Variant, Addon, DietType } from '@/types/menu';
@@ -11,11 +12,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 import {
   ShoppingCart, Plus, Minus, Trash2, Search, Check, Loader2,
   User, ArrowLeft, UserPlus, SkipForward, Receipt,
-  Star, CreditCard, ChevronUp
+  Star, CreditCard, ChevronUp, MapPin
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -417,6 +425,11 @@ export default function OrdersPage() {
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'UPI'>('CASH');
   const [orderNotes, setOrderNotes] = useState('');
 
+  // Location
+  const { locations, selectedLocationId } = useLocationStore();
+  const activeLocations = locations.filter(l => l.is_active);
+  const [checkoutLocationId, setCheckoutLocationId] = useState<string | null>(null);
+
   // Load menu data on mount
   useEffect(() => {
     loadMenu();
@@ -490,20 +503,22 @@ export default function OrdersPage() {
       toast.error('Cart is empty');
       return;
     }
+    setCheckoutLocationId(selectedLocationId);
     setShowCheckout(true);
   };
 
   const handlePlaceOrder = async () => {
     try {
-      await createOrder(paymentMethod, orderNotes || undefined);
+      await createOrder(paymentMethod, orderNotes || undefined, checkoutLocationId || undefined);
       toast.success('Order placed successfully!');
       setShowCheckout(false);
       setShowCart(false);
       setPaymentMethod('CASH');
       setOrderNotes('');
+      setCheckoutLocationId(null);
       setOrderCustomer(null);
       setStep('customer');
-      
+
       // Navigate to orders page
       router.push('/orders');
     } catch (error: any) {
@@ -821,6 +836,31 @@ export default function OrdersPage() {
               </div>
             ) : (
               <p className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-3">Walk-in customer (no customer linked)</p>
+            )}
+
+            {/* Location Picker */}
+            {activeLocations.length > 0 && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  <MapPin className="h-4 w-4" />
+                  Location
+                </label>
+                <Select
+                  value={checkoutLocationId || ''}
+                  onValueChange={(value) => setCheckoutLocationId(value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select location" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activeLocations.map((loc) => (
+                      <SelectItem key={loc.id} value={loc.id}>
+                        {loc.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
 
             {/* Payment Method */}

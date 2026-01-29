@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useOrderStore } from '@/hooks/useOrderStore';
+import { useLocationStore } from '@/hooks/useLocationStore';
 import { Order } from '@/services/orderService';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -32,6 +33,7 @@ import {
   CreditCard,
   Receipt,
   RefreshCw,
+  MapPin,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -52,20 +54,17 @@ export default function OrdersPage() {
   const router = useRouter();
   const { orders, isLoading, error, loadOrders } = useOrderStore();
   
+  const { locations, fetchLocations } = useLocationStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('all');
+  const [branchFilter, setBranchFilter] = useState('all');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
-  // Load orders on mount
+  // Load orders and locations on mount
   useEffect(() => {
-    console.log('Orders page mounted, loading orders...');
     loadOrders();
-  }, [loadOrders]);
-
-  // Debug: log orders when they change
-  useEffect(() => {
-    console.log('Orders updated:', orders);
-  }, [orders]);
+    fetchLocations();
+  }, [loadOrders, fetchLocations]);
 
   // Filter orders based on search and filters
   const filteredOrders = orders.filter(order => {
@@ -97,7 +96,11 @@ export default function OrdersPage() {
       matchesDate = orderDate >= thisWeek;
     }
 
-    return matchesSearch && matchesDate;
+    // Branch filter
+    const orderLocationId = order.locationId || order.location_id || '';
+    const matchesBranch = branchFilter === 'all' || orderLocationId === branchFilter;
+
+    return matchesSearch && matchesDate && matchesBranch;
   });
 
   const formatDate = (dateString: string) => {
@@ -286,6 +289,24 @@ export default function OrdersPage() {
                 <SelectItem value="all">All Time</SelectItem>
               </SelectContent>
             </Select>
+
+            {/* Branch Filter */}
+            {locations.length > 0 && (
+              <Select value={branchFilter} onValueChange={setBranchFilter}>
+                <SelectTrigger className="w-full sm:w-40">
+                  <MapPin className="h-4 w-4 mr-1 shrink-0" />
+                  <SelectValue placeholder="Branch" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Branches</SelectItem>
+                  {locations.filter(l => l.is_active).map((loc) => (
+                    <SelectItem key={loc.id} value={loc.id}>
+                      {loc.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -308,12 +329,12 @@ export default function OrdersPage() {
             <Receipt className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-base sm:text-lg font-semibold mb-2">No orders found</h3>
             <p className="text-sm sm:text-base text-muted-foreground mb-4">
-              {searchQuery || dateFilter !== 'all' 
+              {searchQuery || dateFilter !== 'all' || branchFilter !== 'all'
                 ? 'Try adjusting your filters or search terms'
                 : 'No orders have been placed yet'
               }
             </p>
-            {!searchQuery && dateFilter === 'all' && (
+            {!searchQuery && dateFilter === 'all' && branchFilter === 'all' && (
               <Button onClick={() => router.push('/orders/new')} className="w-full sm:w-auto">
                 <Plus className="h-4 w-4 mr-2" />
                 Create First Order
@@ -333,6 +354,8 @@ export default function OrdersPage() {
             const total = order.total || 0;
             const items = order.items || [];
             const notes = order.notes;
+            const locationName = order.locationName || order.location_name;
+            const createdByName = [order.first_name, order.last_name].filter(Boolean).join(' ') || null;
             
             return (
               <Card key={order.id} className="hover:shadow-md transition-shadow">
@@ -365,6 +388,22 @@ export default function OrdersPage() {
                           <span>{paymentMethodIcons[paymentMethod] || '💵'}</span>
                           <span>{paymentMethod}</span>
                         </div>
+                        {(locationName || createdByName) && (
+                          <div className="flex items-center gap-2 col-span-1 sm:col-span-2">
+                            {locationName && (
+                              <>
+                                <MapPin className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+                                <span className="truncate">{locationName}</span>
+                              </>
+                            )}
+                            {locationName && createdByName && (
+                              <span className="text-muted-foreground/50">|</span>
+                            )}
+                            {createdByName && (
+                              <span className="truncate text-xs">by {createdByName}</span>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* Order Items Details */}
@@ -468,14 +507,29 @@ export default function OrdersPage() {
             </DialogTitle>
           </DialogHeader>
 
-          {selectedOrder && (
+          {selectedOrder && (() => {
+            const detailLocationName = selectedOrder.locationName || selectedOrder.location_name;
+            const detailCreatedByName = [selectedOrder.first_name, selectedOrder.last_name].filter(Boolean).join(' ') || null;
+            return (
             <div className="space-y-6">
               {/* Order Info */}
-              <div className="grid grid-cols-1 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Created</label>
                   <p className="mt-1">{formatDate(selectedOrder.createdAt || selectedOrder.created_at)}</p>
                 </div>
+                {detailLocationName && (
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Branch</label>
+                    <p className="mt-1 flex items-center gap-1.5"><MapPin className="h-4 w-4" />{detailLocationName}</p>
+                  </div>
+                )}
+                {detailCreatedByName && (
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Created By</label>
+                    <p className="mt-1">{detailCreatedByName}</p>
+                  </div>
+                )}
               </div>
 
               {/* Customer Info */}
@@ -596,7 +650,8 @@ export default function OrdersPage() {
                 </div>
               )}
             </div>
-          )}
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>

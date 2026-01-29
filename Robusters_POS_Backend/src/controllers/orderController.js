@@ -15,7 +15,7 @@ const { NotFoundError, BadRequestError } = require('../utils/errors');
  */
 const createOrder = async (req, res, next) => {
   try {
-    const { customerPhone, customerName, customerEmail, items, paymentMethod, notes } = req.body;
+    const { customerPhone, customerName, customerEmail, items, paymentMethod, notes, locationId } = req.body;
     const createdBy = req.user.id;
 
     if (!items || items.length === 0) {
@@ -90,6 +90,7 @@ const createOrder = async (req, res, next) => {
       paymentMethod,
       notes,
       createdBy,
+      locationId,
     });
 
     // Link order to customer and update stats if customer exists

@@ -28,6 +28,7 @@ export interface CreateOrderRequest {
   items: OrderItem[];
   paymentMethod: 'CASH' | 'CARD' | 'UPI';
   notes?: string;
+  locationId?: string;
 }
 
 export interface Order {
@@ -53,6 +54,12 @@ export interface Order {
   created_at?: string; // Backend returns snake_case
   updatedAt?: string;
   updated_at?: string; // Backend returns snake_case
+  locationId?: string;
+  location_id?: string; // Backend returns snake_case
+  locationName?: string;
+  location_name?: string; // Backend returns snake_case
+  first_name?: string; // Created-by user first name
+  last_name?: string; // Created-by user last name
 }
 
 export interface OrdersResponse {
