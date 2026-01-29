@@ -23,7 +23,7 @@ app.use(helmet());
 app.use(cors({
   origin: config.env === 'production'
     ? process.env.ALLOWED_ORIGINS?.split(',') || []
-    : '*',
+    : true, // reflects request origin (required when credentials: true)
   credentials: true,
 }));
 

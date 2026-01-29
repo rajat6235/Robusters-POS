@@ -21,9 +21,9 @@ const pool = new Pool({
   // Pool configuration - optimized for cloud databases
   max: 10, // Reduced max connections for cloud database limits
   min: 2, // Keep minimum connections alive
-  idleTimeoutMillis: 20000, // Close idle connections after 20s (reduced)
-  connectionTimeoutMillis: 10000, // Increased timeout for cloud latency
-  acquireTimeoutMillis: 10000, // Time to wait for connection from pool
+  idleTimeoutMillis: 30000, // Close idle connections after 30s
+  connectionTimeoutMillis: 30000, // 30s timeout for Render cold starts
+  acquireTimeoutMillis: 30000, // 30s to wait for connection from pool
   
   // Additional cloud database optimizations
   keepAlive: true,

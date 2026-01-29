@@ -38,7 +38,13 @@ async function proxyRequest(request: NextRequest, method: string) {
   }
 
   try {
+    // 60s timeout to handle Render DB cold starts
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+    fetchOptions.signal = controller.signal;
+
     const response = await fetch(targetUrl, fetchOptions);
+    clearTimeout(timeoutId);
 
     // Get response body
     const responseBody = await response.text();
@@ -53,9 +59,10 @@ async function proxyRequest(request: NextRequest, method: string) {
     });
   } catch (error) {
     console.error('Proxy error:', error);
+    const isTimeout = error instanceof DOMException && error.name === 'AbortError';
     return NextResponse.json(
-      { error: 'Failed to connect to backend' },
-      { status: 502 }
+      { error: isTimeout ? 'Backend request timed out — database may be waking up, please retry' : 'Failed to connect to backend' },
+      { status: isTimeout ? 504 : 502 }
     );
   }
 }

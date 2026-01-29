@@ -1,11 +1,12 @@
 import axios from 'axios';
 
-// Use Next.js API routes as proxy (relative URL)
-const API_BASE_URL = '/api';
+// Call backend directly, bypassing the Next.js proxy to avoid undici timeout issues
+const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080/api';
 
 // Create axios instance with auth interceptor
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -20,11 +21,12 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Handle auth errors
+// Handle auth errors — skip redirect for login endpoint (401 is expected for bad credentials)
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const isLoginRequest = error.config?.url?.includes('/auth/login');
+    if (error.response?.status === 401 && !isLoginRequest) {
       localStorage.removeItem('auth_token');
       localStorage.removeItem('demo_user');
       window.location.href = '/login';

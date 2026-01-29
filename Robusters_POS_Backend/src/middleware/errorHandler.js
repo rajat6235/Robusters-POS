@@ -57,6 +57,7 @@ const errorHandler = (err, req, res, next) => {
   // Build response
   const response = {
     success: false,
+    message,
     error: {
       code,
       message,
