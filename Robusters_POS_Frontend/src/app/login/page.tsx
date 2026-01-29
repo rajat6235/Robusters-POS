@@ -177,12 +177,12 @@ export default function LoginPage() {
               </Button>
             </form>
 
-            <div className="mt-6 rounded-lg bg-muted p-4">
+            {/* <div className="mt-6 rounded-lg bg-muted p-4">
               <p className="mb-2 text-xs font-medium text-muted-foreground">Demo Credentials:</p>
               <div className="space-y-1 text-xs text-muted-foreground">
                 <p><strong>Admin:</strong> admin@robusters.com / Admin@123</p>
               </div>
-            </div>
+            </div> */}
           </CardContent>
         </Card>
 
