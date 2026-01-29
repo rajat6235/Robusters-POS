@@ -51,7 +51,7 @@ interface OrderStore {
   clearCustomerInfo: () => void;
 
   // Order actions
-  createOrder: (paymentMethod: 'CASH' | 'CARD' | 'UPI', notes?: string, locationId?: string) => Promise<Order>;
+  createOrder: (paymentMethod: 'CASH' | 'CARD' | 'UPI', notes?: string, locationId?: string, priceOverrides?: Record<string, number>) => Promise<Order>;
   loadOrders: (page?: number, limit?: number) => Promise<void>;
 
   // Calculated values (sync)
@@ -111,21 +111,27 @@ export const useOrderStore = create<OrderStore>()(
         set({ customerPhone: '', customerName: '', customerId: null });
       },
 
-      createOrder: async (paymentMethod, notes, locationId) => {
+      createOrder: async (paymentMethod, notes, locationId, priceOverrides) => {
         const state = get();
         set({ isLoading: true, error: null });
 
         try {
-          const orderItems = state.cart.map(cartItem => ({
-            itemId: cartItem.menuItem.id,
-            quantity: cartItem.quantity,
-            variantIds: cartItem.selectedVariants.map(v => v.id),
-            addonSelections: cartItem.addonSelections.map(selection => ({
-              addonId: selection.addon.id,
-              quantity: selection.quantity
-            })),
-            specialInstructions: cartItem.specialInstructions
-          }));
+          const orderItems = state.cart.map(cartItem => {
+            const item: any = {
+              itemId: cartItem.menuItem.id,
+              quantity: cartItem.quantity,
+              variantIds: cartItem.selectedVariants.map(v => v.id),
+              addonSelections: cartItem.addonSelections.map(selection => ({
+                addonId: selection.addon.id,
+                quantity: selection.quantity
+              })),
+              specialInstructions: cartItem.specialInstructions
+            };
+            if (priceOverrides && priceOverrides[cartItem.id] !== undefined) {
+              item.customUnitPrice = priceOverrides[cartItem.id];
+            }
+            return item;
+          });
 
           const orderData: CreateOrderRequest = {
             customerPhone: state.customerPhone || undefined,

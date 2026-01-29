@@ -23,7 +23,7 @@ import { toast } from 'sonner';
 import {
   ShoppingCart, Plus, Minus, Trash2, Search, Check, Loader2,
   User, ArrowLeft, UserPlus, SkipForward, Receipt,
-  Star, CreditCard, ChevronUp, MapPin
+  Star, CreditCard, ChevronUp, MapPin, Pencil, X
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -430,6 +430,11 @@ export default function OrdersPage() {
   const activeLocations = locations.filter(l => l.is_active);
   const [checkoutLocationId, setCheckoutLocationId] = useState<string | null>(null);
 
+  // Checkout price overrides
+  const [priceOverrides, setPriceOverrides] = useState<Record<string, number>>({});
+  const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
+  const [editingPriceValue, setEditingPriceValue] = useState('');
+
   // Load menu data on mount
   useEffect(() => {
     loadMenu();
@@ -504,18 +509,31 @@ export default function OrdersPage() {
       return;
     }
     setCheckoutLocationId(selectedLocationId);
+    setPriceOverrides({});
+    setEditingPriceId(null);
     setShowCheckout(true);
+  };
+
+  const getCheckoutTotal = () => {
+    return cart.reduce((sum, item) => {
+      const unitPrice = priceOverrides[item.id] !== undefined
+        ? priceOverrides[item.id]
+        : calcItemUnitPrice(item);
+      return sum + unitPrice * item.quantity;
+    }, 0);
   };
 
   const handlePlaceOrder = async () => {
     try {
-      await createOrder(paymentMethod, orderNotes || undefined, checkoutLocationId || undefined);
+      const overrides = Object.keys(priceOverrides).length > 0 ? priceOverrides : undefined;
+      await createOrder(paymentMethod, orderNotes || undefined, checkoutLocationId || undefined, overrides);
       toast.success('Order placed successfully!');
       setShowCheckout(false);
       setShowCart(false);
       setPaymentMethod('CASH');
       setOrderNotes('');
       setCheckoutLocationId(null);
+      setPriceOverrides({});
       setOrderCustomer(null);
       setStep('customer');
 
@@ -893,25 +911,132 @@ export default function OrdersPage() {
             </div>
 
             {/* Order Summary */}
-            <div className="border-t pt-4 space-y-2">
+            <div className="border-t pt-4 space-y-3">
               {cart.map((item) => {
-                const unitPrice = calcItemUnitPrice(item);
+                const calculatedUnitPrice = calcItemUnitPrice(item);
+                const hasOverride = priceOverrides[item.id] !== undefined;
+                const effectiveUnitPrice = hasOverride ? priceOverrides[item.id] : calculatedUnitPrice;
+                const isEditingPrice = editingPriceId === item.id;
+                const availableVariants = item.menuItem.variants || [];
+
                 return (
-                  <div key={item.id} className="flex justify-between text-sm gap-2">
-                    <span className="text-muted-foreground min-w-0 truncate">
-                      {item.menuItem.name} x{item.quantity}
-                      {item.selectedVariants.length > 0 && (
-                        <> ({item.selectedVariants.map(v => v.name).join(', ')})</>
-                      )}
-                    </span>
-                    <span className="shrink-0">₹{(unitPrice * item.quantity).toFixed(0)}</span>
+                  <div key={item.id} className="bg-muted/30 rounded-lg p-3 space-y-2">
+                    {/* Item header: name, qty, price */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm">{item.menuItem.name} <span className="text-muted-foreground">x{item.quantity}</span></p>
+                        {item.addonSelections.length > 0 && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            + {item.addonSelections.map(a => a.addon.name).join(', ')}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {isEditingPrice ? (
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-muted-foreground">₹</span>
+                            <Input
+                              type="number"
+                              value={editingPriceValue}
+                              onChange={(e) => setEditingPriceValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  const val = parseFloat(editingPriceValue);
+                                  if (!isNaN(val) && val >= 0) {
+                                    setPriceOverrides(prev => ({ ...prev, [item.id]: val }));
+                                  }
+                                  setEditingPriceId(null);
+                                } else if (e.key === 'Escape') {
+                                  setEditingPriceId(null);
+                                }
+                              }}
+                              onBlur={() => {
+                                const val = parseFloat(editingPriceValue);
+                                if (!isNaN(val) && val >= 0) {
+                                  setPriceOverrides(prev => ({ ...prev, [item.id]: val }));
+                                }
+                                setEditingPriceId(null);
+                              }}
+                              className="h-7 w-20 text-sm text-right"
+                              autoFocus
+                            />
+                          </div>
+                        ) : (
+                          <button
+                            className="flex items-center gap-1 hover:bg-muted rounded px-1.5 py-0.5 transition-colors"
+                            onClick={() => {
+                              setEditingPriceId(item.id);
+                              setEditingPriceValue(effectiveUnitPrice.toString());
+                            }}
+                          >
+                            {hasOverride && (
+                              <span className="text-xs text-muted-foreground line-through">₹{(calculatedUnitPrice * item.quantity).toFixed(0)}</span>
+                            )}
+                            <span className={cn("text-sm font-semibold", hasOverride && "text-primary")}>
+                              ₹{(effectiveUnitPrice * item.quantity).toFixed(0)}
+                            </span>
+                            <Pencil className="h-3 w-3 text-muted-foreground" />
+                          </button>
+                        )}
+                        {hasOverride && !isEditingPrice && (
+                          <button
+                            className="text-muted-foreground hover:text-destructive transition-colors"
+                            onClick={() => {
+                              setPriceOverrides(prev => {
+                                const next = { ...prev };
+                                delete next[item.id];
+                                return next;
+                              });
+                            }}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Variant chips (inline editing) */}
+                    {availableVariants.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {availableVariants.map((variant) => {
+                          const isSelected = item.selectedVariants.some(v => v.id === variant.id);
+                          return (
+                            <button
+                              key={variant.id}
+                              className={cn(
+                                'text-xs px-2 py-1 rounded-full border transition-colors',
+                                isSelected
+                                  ? 'bg-primary text-primary-foreground border-primary'
+                                  : 'bg-background text-muted-foreground border-border hover:border-primary/50'
+                              )}
+                              onClick={() => {
+                                const newVariants = isSelected
+                                  ? item.selectedVariants.filter(v => v.id !== variant.id)
+                                  : [...item.selectedVariants, variant];
+                                updateCartItem(item.id, { selectedVariants: newVariants });
+                                // Clear price override when variants change so price recalculates
+                                if (priceOverrides[item.id] !== undefined) {
+                                  setPriceOverrides(prev => {
+                                    const next = { ...prev };
+                                    delete next[item.id];
+                                    return next;
+                                  });
+                                }
+                              }}
+                            >
+                              {variant.name} ₹{variant.price}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })}
               <div className="border-t pt-2 mt-2">
                 <div className="flex justify-between font-bold text-lg">
                   <span>Total</span>
-                  <span>₹{cartTotal.toFixed(0)}</span>
+                  <span>₹{getCheckoutTotal().toFixed(0)}</span>
                 </div>
               </div>
             </div>
@@ -920,7 +1045,7 @@ export default function OrdersPage() {
             <Button variant="outline" onClick={() => setShowCheckout(false)} className="w-full sm:w-auto">Cancel</Button>
             <Button onClick={handlePlaceOrder} disabled={orderLoading} className="w-full sm:w-auto">
               {orderLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Place Order — ₹{cartTotal.toFixed(0)}
+              Place Order — ₹{getCheckoutTotal().toFixed(0)}
             </Button>
           </DialogFooter>
         </DialogContent>

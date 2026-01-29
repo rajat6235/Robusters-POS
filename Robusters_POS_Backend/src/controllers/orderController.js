@@ -52,14 +52,22 @@ const createOrder = async (req, res, next) => {
         throw new BadRequestError(`Menu item ${menuItem.name} is not available`);
       }
 
-      // Calculate item price
-      const priceResult = await calculateItemPrice({
-        itemId: item.itemId,
-        variantIds: item.variantIds || [],
-        addonSelections: item.addonSelections || [],
-      });
+      // Use custom price if provided, otherwise calculate from DB
+      let unitPrice;
+      if (item.customUnitPrice !== undefined && item.customUnitPrice !== null) {
+        unitPrice = parseFloat(item.customUnitPrice);
+        if (isNaN(unitPrice) || unitPrice < 0) {
+          throw new BadRequestError(`Invalid custom price for item ${menuItem.name}`);
+        }
+      } else {
+        const priceResult = await calculateItemPrice({
+          itemId: item.itemId,
+          variantIds: item.variantIds || [],
+          addonSelections: item.addonSelections || [],
+        });
+        unitPrice = priceResult.totalPrice;
+      }
 
-      const unitPrice = priceResult.totalPrice;
       const totalPrice = unitPrice * item.quantity;
       subtotal += totalPrice;
 

@@ -14,6 +14,7 @@ export interface OrderItem {
   addon_selections?: any; // Backend returns snake_case as JSON
   specialInstructions?: string;
   special_instructions?: string; // Backend returns snake_case
+  customUnitPrice?: number; // Optional price override (sent in request)
   unitPrice?: number | string;
   unit_price?: number | string; // Backend returns snake_case
   totalPrice?: number | string;
