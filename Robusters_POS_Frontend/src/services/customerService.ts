@@ -53,7 +53,7 @@ export interface FindOrCreateCustomerRequest {
 }
 
 export interface CustomerSearchResult {
-  customer: Customer | null;
+  customers: Customer[];
 }
 
 export interface CustomersListResponse {

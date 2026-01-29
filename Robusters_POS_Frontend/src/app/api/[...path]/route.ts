@@ -3,14 +3,12 @@ import { NextRequest, NextResponse } from 'next/server';
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080/api';
 
 // Debug: Log the backend URL at startup
-console.log('[API Proxy] BACKEND_URL:', BACKEND_URL);
 
 async function proxyRequest(request: NextRequest, method: string) {
   const url = new URL(request.url);
   const path = url.pathname.replace('/api/', '');
   const targetUrl = `${BACKEND_URL}/${path}${url.search}`;
 
-  console.log(`[API Proxy] ${method} ${url.pathname} -> ${targetUrl}`);
 
   const headers: HeadersInit = {
     'Content-Type': 'application/json',

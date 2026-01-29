@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { toast } from 'sonner';
 import {
   ShoppingCart, Plus, Minus, Trash2, Search, Check, Loader2,
-  Phone, User, ArrowLeft, UserPlus, SkipForward, Receipt,
+  User, ArrowLeft, UserPlus, SkipForward, Receipt,
   Star, CreditCard, ChevronUp
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -56,64 +56,55 @@ interface CustomerLookupProps {
 }
 
 function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps) {
-  const [phoneQuery, setPhoneQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState(false);
-  const [foundCustomer, setFoundCustomer] = useState<Customer | null>(null);
+  const [results, setResults] = useState<Customer[]>([]);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [loadingOrders, setLoadingOrders] = useState(false);
 
   const handleSearch = async () => {
-    const raw = phoneQuery.trim();
-    if (!raw) {
-      toast.error('Please enter a phone number');
+    const raw = searchQuery.trim();
+    if (!raw || raw.length < 2) {
+      toast.error('Enter at least 2 characters to search');
       return;
     }
     setSearching(true);
     setSearched(false);
-    setFoundCustomer(null);
+    setResults([]);
+    setSelectedCustomer(null);
     setRecentOrders([]);
     setShowAddForm(false);
 
     try {
-      // Build phone variants to try (exact → with leading 0 → without leading 0)
-      const variants: string[] = [raw];
-      const digitsOnly = raw.replace(/[^0-9]/g, '');
-      if (!digitsOnly.startsWith('0')) {
-        variants.push('0' + digitsOnly);
-      } else {
-        variants.push(digitsOnly.slice(1));
-      }
-
-      let customer = null;
-      for (const variant of variants) {
-        const response = await customerService.searchCustomers(variant);
-        if (response.data.customer) {
-          customer = response.data.customer;
-          break;
-        }
-      }
-
-      setFoundCustomer(customer);
+      const response = await customerService.searchCustomers(raw);
+      const customers = response.data.customers || [];
+      setResults(customers);
       setSearched(true);
 
-      if (customer) {
-        // Load recent orders
-        setLoadingOrders(true);
-        try {
-          const ordersRes = await customerService.getCustomerOrders(customer.id, 1, 5);
-          setRecentOrders(ordersRes.data.orders || []);
-        } catch {
-          // Non-critical, continue
-        } finally {
-          setLoadingOrders(false);
-        }
+      // If only one result, auto-select it
+      if (customers.length === 1) {
+        handleSelectCustomer(customers[0]);
       }
     } catch (error: any) {
       toast.error(error.message || 'Search failed');
     } finally {
       setSearching(false);
+    }
+  };
+
+  const handleSelectCustomer = async (customer: Customer) => {
+    setSelectedCustomer(customer);
+    setLoadingOrders(true);
+    try {
+      const ordersRes = await customerService.getCustomerOrders(customer.id, 1, 5);
+      setRecentOrders(ordersRes.data.orders || []);
+    } catch {
+      // Non-critical
+    } finally {
+      setLoadingOrders(false);
     }
   };
 
@@ -123,8 +114,7 @@ function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps)
 
   const handleCustomerCreated = async () => {
     setShowAddForm(false);
-    // Re-search to get the created customer
-    if (phoneQuery.trim()) {
+    if (searchQuery.trim()) {
       await handleSearch();
     }
     toast.success('Customer created successfully');
@@ -135,18 +125,18 @@ function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps)
       <div className="w-full max-w-lg space-y-6">
         <div className="text-center space-y-2">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-            <Phone className="h-8 w-8 text-primary" />
+            <Search className="h-8 w-8 text-primary" />
           </div>
           <h1 className="text-2xl font-bold">New Order</h1>
-          <p className="text-muted-foreground">Enter customer phone number to get started</p>
+          <p className="text-muted-foreground">Search by customer name or phone number</p>
         </div>
 
-        {/* Phone Search */}
+        {/* Search Input */}
         <div className="flex gap-2">
           <Input
-            placeholder="Enter phone number..."
-            value={phoneQuery}
-            onChange={(e) => setPhoneQuery(e.target.value)}
+            placeholder="Name or phone number..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={handleKeyDown}
             className="h-12 text-lg"
             autoFocus
@@ -156,8 +146,39 @@ function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps)
           </Button>
         </div>
 
-        {/* Customer Found */}
-        {searched && foundCustomer && (
+        {/* Multiple Results List */}
+        {searched && results.length > 1 && !selectedCustomer && (
+          <Card>
+            <CardContent className="pt-4 space-y-1">
+              <p className="text-sm text-muted-foreground mb-3">{results.length} customers found</p>
+              <div className="space-y-2 max-h-72 overflow-y-auto">
+                {results.map((cust) => (
+                  <button
+                    key={cust.id}
+                    className="w-full flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors text-left"
+                    onClick={() => handleSelectCustomer(cust)}
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 shrink-0">
+                      <User className="h-5 w-5 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">
+                        {cust.first_name} {cust.last_name || ''}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{cust.phone}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-xs text-muted-foreground">{cust.total_orders} orders</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Selected Customer Detail */}
+        {selectedCustomer && (
           <Card>
             <CardContent className="pt-6 space-y-4">
               <div className="flex items-center gap-4">
@@ -166,27 +187,32 @@ function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps)
                 </div>
                 <div className="flex-1">
                   <h3 className="font-semibold text-lg">
-                    {foundCustomer.first_name} {foundCustomer.last_name || ''}
+                    {selectedCustomer.first_name} {selectedCustomer.last_name || ''}
                   </h3>
-                  <p className="text-sm text-muted-foreground">{foundCustomer.phone}</p>
+                  <p className="text-sm text-muted-foreground">{selectedCustomer.phone}</p>
                 </div>
+                {results.length > 1 && (
+                  <Button variant="ghost" size="sm" className="text-xs" onClick={() => setSelectedCustomer(null)}>
+                    Back
+                  </Button>
+                )}
               </div>
 
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div className="bg-muted/50 rounded-lg p-3">
-                  <p className="text-lg font-bold">{foundCustomer.total_orders}</p>
+                  <p className="text-lg font-bold">{selectedCustomer.total_orders}</p>
                   <p className="text-xs text-muted-foreground">Orders</p>
                 </div>
                 <div className="bg-muted/50 rounded-lg p-3">
                   <p className="text-lg font-bold">
-                    ₹{Number(foundCustomer.total_spent || 0).toFixed(0)}
+                    ₹{Number(selectedCustomer.total_spent || 0).toFixed(0)}
                   </p>
                   <p className="text-xs text-muted-foreground">Spent</p>
                 </div>
                 <div className="bg-muted/50 rounded-lg p-3">
                   <p className="text-lg font-bold flex items-center justify-center gap-1">
                     <Star className="h-4 w-4 text-yellow-500" />
-                    {foundCustomer.loyalty_points}
+                    {selectedCustomer.loyalty_points}
                   </p>
                   <p className="text-xs text-muted-foreground">Points</p>
                 </div>
@@ -212,7 +238,7 @@ function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps)
                               {order.created_at ? new Date(order.created_at).toLocaleDateString() : ''}
                             </p>
                           </div>
-                          
+
                           <div className="text-right">
                             <p className="font-bold text-sm">₹{Number(order.total || 0).toFixed(0)}</p>
                             <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
@@ -246,7 +272,7 @@ function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps)
                                       <p className="font-medium text-xs">₹{Number(item.total_price || 0).toFixed(0)}</p>
                                     </div>
                                   </div>
-                                  
+
                                   {/* Variants */}
                                   {item.variants && Array.isArray(item.variants) && item.variants.length > 0 && (
                                     <div className="text-xs text-muted-foreground">
@@ -259,7 +285,7 @@ function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps)
                                       ))}
                                     </div>
                                   )}
-                                  
+
                                   {/* Addons */}
                                   {item.addons && Array.isArray(item.addons) && item.addons.length > 0 && (
                                     <div className="text-xs text-muted-foreground">
@@ -272,7 +298,7 @@ function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps)
                                       ))}
                                     </div>
                                   )}
-                                  
+
                                   {/* Special Instructions */}
                                   {item.special_instructions && (
                                     <div className="text-xs text-muted-foreground">
@@ -303,24 +329,24 @@ function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps)
                 </div>
               ) : null}
 
-              <Button className="w-full h-12 text-base" onClick={() => onCustomerSelected(foundCustomer)}>
+              <Button className="w-full h-12 text-base" onClick={() => onCustomerSelected(selectedCustomer)}>
                 Start Order
               </Button>
             </CardContent>
           </Card>
         )}
 
-        {/* Customer Not Found */}
-        {searched && !foundCustomer && !showAddForm && (
+        {/* No Results */}
+        {searched && results.length === 0 && !showAddForm && (
           <Card>
             <CardContent className="pt-6 text-center space-y-4">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
                 <User className="h-6 w-6 text-muted-foreground" />
               </div>
               <div>
-                <h3 className="font-semibold">Customer not found</h3>
+                <h3 className="font-semibold">No customers found</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  No customer with this phone number exists
+                  No customer matches &ldquo;{searchQuery.trim()}&rdquo;
                 </p>
               </div>
               <Button onClick={() => setShowAddForm(true)} className="w-full">

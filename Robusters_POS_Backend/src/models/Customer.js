@@ -377,6 +377,54 @@ class Customer {
     return result.rows[0];
   }
 
+  static async search(query, limit = 10) {
+    const trimmed = query.trim();
+    const likeTerm = `%${trimmed}%`;
+
+    // Also build a phone variant (with/without leading 0) for partial phone matching
+    const digitsOnly = trimmed.replace(/[^0-9]/g, '');
+    let phoneVariant = null;
+    if (digitsOnly.length > 0) {
+      phoneVariant = digitsOnly.startsWith('0') ? digitsOnly.slice(1) : '0' + digitsOnly;
+    }
+
+    let sql = `
+      SELECT c.*, cp.dietary_restrictions, cp.allergies, cp.favorite_items,
+             cp.preferred_payment_method, cp.notes as preference_notes,
+             CASE
+               WHEN c.phone = $1 THEN 1
+               ${phoneVariant ? `WHEN c.phone = $3 THEN 2` : ''}
+               WHEN c.phone ILIKE $2 THEN 3
+               WHEN c.first_name ILIKE $2 OR c.last_name ILIKE $2 THEN 4
+               ELSE 5
+             END as relevance
+      FROM customers c
+      LEFT JOIN customer_preferences cp ON c.id = cp.customer_id
+      WHERE c.is_active = true
+        AND (
+          c.phone ILIKE $2
+          OR c.first_name ILIKE $2
+          OR c.last_name ILIKE $2
+          OR CONCAT(c.first_name, ' ', c.last_name) ILIKE $2
+          ${phoneVariant ? `OR c.phone = $3 OR c.phone ILIKE $4` : ''}
+        )
+      ORDER BY relevance, c.first_name
+    `;
+
+    const values = [trimmed, likeTerm];
+    if (phoneVariant) {
+      values.push(phoneVariant, `%${phoneVariant}%`);
+      sql += ` LIMIT $5`;
+      values.push(limit);
+    } else {
+      sql += ` LIMIT $3`;
+      values.push(limit);
+    }
+
+    const result = await db.query(sql, values);
+    return result.rows;
+  }
+
   static async getTopCustomers(limit = 10) {
     const query = `
       SELECT c.*, 

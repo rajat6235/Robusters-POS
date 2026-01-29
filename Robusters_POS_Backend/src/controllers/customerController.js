@@ -243,30 +243,21 @@ class CustomerController {
     }
   }
 
-  // Search customers by phone or email
+  // Search customers by name, phone, or email
   static async searchCustomers(req, res, next) {
     try {
       const { query } = req.query;
-      
-      if (!query || query.length < 3) {
-        return next(new BadRequestError('Search query must be at least 3 characters'));
+
+      if (!query || query.length < 2) {
+        return next(new BadRequestError('Search query must be at least 2 characters'));
       }
 
-      let customer = null;
-      
-      // Check if query looks like a phone number
-      if (/^\+?[\d\s\-\(\)]+$/.test(query)) {
-        customer = await Customer.findByPhone(query);
-      } 
-      // Check if query looks like an email
-      else if (query.includes('@')) {
-        customer = await Customer.findByEmail(query);
-      }
+      const customers = await Customer.search(query, 10);
 
       res.json({
         success: true,
-        data: { customer },
-        message: customer ? 'Customer found' : 'No customer found'
+        data: { customers },
+        message: customers.length > 0 ? `${customers.length} customer(s) found` : 'No customer found'
       });
     } catch (error) {
       next(error);
