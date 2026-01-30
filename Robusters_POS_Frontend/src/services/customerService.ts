@@ -112,12 +112,13 @@ class CustomerService {
   }
 
   // Get all customers with pagination and search
-  async getCustomers(page = 1, limit = 20, search = '') {
+  async getCustomers(page = 1, limit = 20, search = '', sortBy = 'recent') {
     const params = new URLSearchParams({
       page: page.toString(),
       limit: limit.toString(),
+      sortBy,
     });
-    
+
     if (search) {
       params.append('search', search);
     }

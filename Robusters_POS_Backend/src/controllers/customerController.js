@@ -45,8 +45,9 @@ class CustomerController {
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 20;
       const search = req.query.search || '';
+      const sortBy = req.query.sortBy || 'recent';
 
-      const result = await Customer.getAll(page, limit, search);
+      const result = await Customer.getAll(page, limit, search, sortBy);
 
       res.json({
         success: true,

@@ -122,28 +122,35 @@ class Customer {
     return result.rows[0];
   }
 
-  static async getAll(page = 1, limit = 20, search = '') {
+  static async getAll(page = 1, limit = 20, search = '', sortBy = 'recent') {
     const offset = (page - 1) * limit;
-    
+
     let query = `
-      SELECT c.*, cp.dietary_restrictions, cp.allergies, cp.favorite_items, 
+      SELECT c.*, cp.dietary_restrictions, cp.allergies, cp.favorite_items,
              cp.preferred_payment_method, cp.notes as preference_notes
       FROM customers c
       LEFT JOIN customer_preferences cp ON c.id = cp.customer_id
       WHERE c.is_active = true
     `;
-    
+
     const values = [];
-    
+
     if (search) {
-      query += ` AND (c.first_name ILIKE $${values.length + 1} 
-                     OR c.last_name ILIKE $${values.length + 1} 
-                     OR c.phone ILIKE $${values.length + 1} 
+      query += ` AND (c.first_name ILIKE $${values.length + 1}
+                     OR c.last_name ILIKE $${values.length + 1}
+                     OR c.phone ILIKE $${values.length + 1}
                      OR c.email ILIKE $${values.length + 1})`;
       values.push(`%${search}%`);
     }
 
-    query += ` ORDER BY c.created_at DESC LIMIT $${values.length + 1} OFFSET $${values.length + 2}`;
+    const sortMap = {
+      loyalty: 'c.loyalty_points DESC',
+      orders: 'c.total_orders DESC',
+      spent: 'c.total_spent DESC',
+    };
+    const orderClause = sortMap[sortBy] || 'c.updated_at DESC';
+
+    query += ` ORDER BY ${orderClause} LIMIT $${values.length + 1} OFFSET $${values.length + 2}`;
     values.push(limit, offset);
 
     const result = await db.query(query, values);

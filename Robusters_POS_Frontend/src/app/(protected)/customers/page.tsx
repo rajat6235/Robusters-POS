@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useCustomerStore } from '@/hooks/useCustomerStore';
 import { Customer } from '@/services/customerService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,8 +11,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import {
-  Search, Plus, Phone, Mail, Calendar, ShoppingBag, 
-  DollarSign, Award, Edit, Trash2, Eye, Loader2
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Search, Plus, Phone, Mail, Calendar, ShoppingBag,
+  DollarSign, Award, Edit, Trash2, Eye, Loader2, ArrowDownUp
 } from 'lucide-react';
 import { CustomerForm } from '@/components/customer/CustomerForm';
 import { CustomerProfile } from '@/components/customer/CustomerProfile';
@@ -30,30 +37,26 @@ export default function CustomersPage() {
   } = useCustomerStore();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
+  const [sortBy, setSortBy] = useState<'recent' | 'loyalty' | 'orders' | 'spent'>('recent');
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load customers on mount
+  // Debounce search input
   useEffect(() => {
-    loadCustomers(1, 20);
-  }, [loadCustomers]);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 400);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchQuery]);
 
-  // Filter customers based on search query
+  // Load customers from API whenever search or sort changes
   useEffect(() => {
-    if (!searchQuery) {
-      setFilteredCustomers(customers);
-    } else {
-      const filtered = customers.filter(customer =>
-        customer.first_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        customer.last_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        customer.phone.includes(searchQuery) ||
-        customer.email?.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-      setFilteredCustomers(filtered);
-    }
-  }, [customers, searchQuery]);
+    loadCustomers(1, 20, debouncedSearch, sortBy);
+  }, [loadCustomers, debouncedSearch, sortBy]);
 
   // Clear error when component unmounts
   useEffect(() => {
@@ -193,7 +196,21 @@ export default function CustomersPage() {
       {/* Customer List */}
       <Card>
         <CardHeader className="pb-3 sm:pb-6">
-          <CardTitle className="text-lg sm:text-xl">Customer List</CardTitle>
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle className="text-lg sm:text-xl">Customer List</CardTitle>
+            <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
+              <SelectTrigger className="w-[160px] h-8 text-xs">
+                <ArrowDownUp className="h-3 w-3 mr-1" />
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="recent">Recent</SelectItem>
+                <SelectItem value="loyalty">Loyalty Points</SelectItem>
+                <SelectItem value="orders">Most Orders</SelectItem>
+                <SelectItem value="spent">Most Spent</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent className="p-3 sm:p-6 pt-0">
           {isLoading ? (
@@ -201,7 +218,7 @@ export default function CustomersPage() {
               <Loader2 className="h-6 w-6 sm:h-8 sm:w-8 animate-spin" />
               <span className="ml-2 text-sm sm:text-base">Loading customers...</span>
             </div>
-          ) : filteredCustomers.length === 0 ? (
+          ) : customers.length === 0 ? (
             <div className="text-center py-8">
               <p className="text-muted-foreground text-sm sm:text-base">
                 {searchQuery ? 'No customers found matching your search.' : 'No customers yet.'}
@@ -210,7 +227,7 @@ export default function CustomersPage() {
           ) : (
             <ScrollArea className="h-[300px] sm:h-[400px]">
               <div className="space-y-2 sm:space-y-3">
-                {filteredCustomers.map((customer) => (
+                {customers.map((customer) => (
                   <div
                     key={customer.id}
                     className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 sm:p-4 border rounded-lg hover:bg-muted/50 gap-3 sm:gap-4"
@@ -225,7 +242,7 @@ export default function CustomersPage() {
                         )}
                       </div>
                       
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 text-xs sm:text-sm text-muted-foreground">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-4 text-xs sm:text-sm text-muted-foreground">
                         <div className="flex items-center gap-1">
                           <Phone className="h-3 w-3 flex-shrink-0" />
                           <span className="truncate">{customer.phone}</span>
@@ -246,6 +263,11 @@ export default function CustomersPage() {
                         <div className="flex items-center gap-1">
                           <DollarSign className="h-3 w-3 flex-shrink-0" />
                           <span>{formatCurrency(Number(customer.total_spent || 0))}</span>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <Award className="h-3 w-3 flex-shrink-0 text-yellow-500" />
+                          <span>{Number(customer.loyalty_points || 0)} pts</span>
                         </div>
                       </div>
                     </div>

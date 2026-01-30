@@ -12,7 +12,7 @@ interface CustomerStore {
   searchResults: Customer[];
   
   // Actions
-  loadCustomers: (page?: number, limit?: number, search?: string) => Promise<void>;
+  loadCustomers: (page?: number, limit?: number, search?: string, sortBy?: string) => Promise<void>;
   createCustomer: (data: CreateCustomerRequest) => Promise<Customer>;
   updateCustomer: (id: string, data: UpdateCustomerRequest) => Promise<Customer>;
   getCustomerById: (id: string) => Promise<Customer>;
@@ -37,10 +37,10 @@ export const useCustomerStore = create<CustomerStore>()(
       error: null,
       searchResults: [],
 
-      loadCustomers: async (page = 1, limit = 20, search = '') => {
+      loadCustomers: async (page = 1, limit = 20, search = '', sortBy = 'recent') => {
         set({ isLoading: true, error: null });
         try {
-          const response = await customerService.getCustomers(page, limit, search);
+          const response = await customerService.getCustomers(page, limit, search, sortBy);
           set({ 
             customers: response.data.customers,
             isLoading: false 
