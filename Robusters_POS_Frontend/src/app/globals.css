@@ -145,4 +145,31 @@
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
+  /* Enhanced hover effects for better UX */
+  .hover-lift {
+    @apply transition-all duration-200 ease-in-out;
+  }
+  .hover-lift:hover {
+    @apply transform -translate-y-0.5 shadow-lg;
+  }
+
+  /* Smooth hover transitions for interactive elements */
+  .smooth-hover {
+    @apply transition-all duration-200 ease-in-out;
+  }
+
+  /* Mobile-specific improvements */
+  @media (max-width: 640px) {
+    .mobile-dialog {
+      margin: 1rem;
+      width: calc(100vw - 2rem);
+      max-height: calc(100vh - 2rem);
+    }
+    
+    .mobile-touch-target {
+      min-height: 48px;
+      min-width: 48px;
+    }
+  }
 }

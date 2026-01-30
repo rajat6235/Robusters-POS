@@ -4,6 +4,7 @@
  */
 
 const db = require('../database/connection');
+const ActivityLog = require('./ActivityLog');
 
 // Valid payment methods
 const PAYMENT_METHODS = {
@@ -18,6 +19,12 @@ const PAYMENT_STATUS = {
   PENDING: 'PENDING',
   PAID: 'PAID',
   FAILED: 'FAILED',
+};
+
+// Valid order statuses
+const ORDER_STATUS = {
+  CONFIRMED: 'CONFIRMED',
+  CANCELLED: 'CANCELLED',
 };
 
 /**
@@ -66,8 +73,8 @@ const create = async ({
     const orderResult = await client.query(
       `INSERT INTO orders (
         order_number, customer_phone, customer_name, customer_id, subtotal, tax, total,
-        payment_method, payment_status, notes, created_by, location_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        payment_method, payment_status, status, notes, created_by, location_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *`,
       [
         orderNumber,
@@ -79,6 +86,7 @@ const create = async ({
         total,
         paymentMethod,
         PAYMENT_STATUS.PENDING,
+        ORDER_STATUS.CONFIRMED,
         notes,
         createdBy,
         locationId || null,
@@ -112,6 +120,26 @@ const create = async ({
     }
     
     await client.query('COMMIT');
+    
+    // Log activity after successful commit
+    try {
+      await ActivityLog.create({
+        userId: createdBy,
+        action: ActivityLog.ACTIONS.ORDER_CREATED,
+        details: {
+          orderId: order.id,
+          orderNumber: order.order_number,
+          customerPhone: customerPhone,
+          customerName: customerName,
+          total: parseFloat(total),
+          paymentMethod: paymentMethod,
+          itemCount: items.length,
+          locationId: locationId
+        }
+      });
+    } catch (logError) {
+      console.error('Failed to log order creation activity:', logError);
+    }
     
     return {
       ...order,
@@ -248,6 +276,281 @@ const updatePaymentStatus = async (id, paymentStatus) => {
   );
   
   return result.rows[0];
+};
+
+/**
+ * Request order cancellation
+ * @param {string} orderId - Order UUID
+ * @param {string} managerId - Manager user UUID
+ * @param {string} reason - Cancellation reason
+ * @returns {Promise<Object>} Updated order with refund info
+ */
+const requestCancellation = async (orderId, managerId, reason) => {
+  const client = await db.getClient();
+  
+  try {
+    await client.query('BEGIN');
+    
+    // Check if order exists and is CONFIRMED
+    const orderCheck = await client.query(
+      'SELECT id, status, total, payment_status, payment_method, customer_id FROM orders WHERE id = $1',
+      [orderId]
+    );
+    
+    if (orderCheck.rows.length === 0) {
+      throw new Error('Order not found');
+    }
+    
+    const order = orderCheck.rows[0];
+    
+    if (order.status !== ORDER_STATUS.CONFIRMED) {
+      throw new Error('Only confirmed orders can be cancelled');
+    }
+    
+    if (order.cancellation_requested_by) {
+      throw new Error('Cancellation already requested for this order');
+    }
+    
+    // Update order with cancellation request
+    const result = await client.query(
+      `UPDATE orders 
+       SET cancellation_requested_by = $1, 
+           cancellation_requested_at = CURRENT_TIMESTAMP,
+           cancellation_reason = $2,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3
+       RETURNING *`,
+      [managerId, reason, orderId]
+    );
+    
+    // Log status history
+    await client.query(
+      `INSERT INTO order_status_history (order_id, previous_status, new_status, changed_by, reason)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [orderId, order.status, 'CANCELLATION_REQUESTED', managerId, reason]
+    );
+    
+    await client.query('COMMIT');
+    
+    // Log activity after successful commit
+    try {
+      await ActivityLog.create({
+        userId: managerId,
+        action: ActivityLog.ACTIONS.ORDER_CANCELLATION_REQUESTED,
+        details: {
+          orderId: orderId,
+          orderNumber: result.rows[0].order_number,
+          reason: reason,
+          orderTotal: parseFloat(order.total),
+          paymentMethod: order.payment_method
+        }
+      });
+    } catch (logError) {
+      console.error('Failed to log cancellation request activity:', logError);
+    }
+    
+    // Add refund information to the response
+    const updatedOrder = result.rows[0];
+    updatedOrder.refund_info = {
+      payment_method: order.payment_method,
+      amount: parseFloat(order.total),
+      loyalty_points: order.payment_method === 'LOYALTY' ? parseFloat(order.total) : 0
+    };
+    
+    return updatedOrder;
+    
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+
+/**
+ * Approve or reject order cancellation
+ * @param {string} orderId - Order UUID
+ * @param {string} adminId - Admin user UUID
+ * @param {boolean} approved - Whether to approve or reject
+ * @param {string} adminNotes - Admin notes
+ * @returns {Promise<Object>} Updated order with refund info
+ */
+const approveCancellation = async (orderId, adminId, approved, adminNotes = '') => {
+  const client = await db.getClient();
+  
+  try {
+    await client.query('BEGIN');
+    
+    // Check if order exists and has cancellation requested
+    const orderCheck = await client.query(
+      'SELECT id, status, total, payment_status, payment_method, customer_id, cancellation_requested_by FROM orders WHERE id = $1',
+      [orderId]
+    );
+    
+    if (orderCheck.rows.length === 0) {
+      throw new Error('Order not found');
+    }
+    
+    const order = orderCheck.rows[0];
+    
+    if (!order.cancellation_requested_by) {
+      throw new Error('No cancellation request found for this order');
+    }
+    
+    if (order.status === ORDER_STATUS.CANCELLED) {
+      throw new Error('Order is already cancelled');
+    }
+    
+    let result;
+    let refundInfo = null;
+    
+    if (approved) {
+      // Cancel the order
+      result = await client.query(
+        `UPDATE orders 
+         SET status = $1,
+             cancelled_by = $2,
+             cancelled_at = CURRENT_TIMESTAMP,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $3
+         RETURNING *`,
+        [ORDER_STATUS.CANCELLED, adminId, orderId]
+      );
+      
+      // Handle loyalty points refund if applicable
+      if (order.payment_method === 'LOYALTY' && order.customer_id) {
+        const loyaltyPointsToRefund = parseFloat(order.total);
+        
+        // Add loyalty points back to customer
+        await client.query(
+          'UPDATE customers SET loyalty_points = loyalty_points + $1 WHERE id = $2',
+          [loyaltyPointsToRefund, order.customer_id]
+        );
+        
+        refundInfo = {
+          payment_method: 'LOYALTY',
+          loyalty_points_refunded: loyaltyPointsToRefund,
+          amount: parseFloat(order.total)
+        };
+      } else {
+        refundInfo = {
+          payment_method: order.payment_method,
+          amount: parseFloat(order.total),
+          loyalty_points_refunded: 0
+        };
+      }
+      
+      // Log status history
+      await client.query(
+        `INSERT INTO order_status_history (order_id, previous_status, new_status, changed_by, reason)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [orderId, ORDER_STATUS.CONFIRMED, ORDER_STATUS.CANCELLED, adminId, `Approved: ${adminNotes}`]
+      );
+      
+    } else {
+      // Reject cancellation - clear cancellation request fields
+      result = await client.query(
+        `UPDATE orders 
+         SET cancellation_requested_by = NULL,
+             cancellation_requested_at = NULL,
+             cancellation_reason = NULL,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1
+         RETURNING *`,
+        [orderId]
+      );
+      
+      // Log status history
+      await client.query(
+        `INSERT INTO order_status_history (order_id, previous_status, new_status, changed_by, reason)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [orderId, 'CANCELLATION_REQUESTED', ORDER_STATUS.CONFIRMED, adminId, `Rejected: ${adminNotes}`]
+      );
+    }
+    
+    await client.query('COMMIT');
+    
+    // Log activity after successful commit
+    try {
+      const activityAction = approved 
+        ? ActivityLog.ACTIONS.ORDER_CANCELLATION_APPROVED 
+        : ActivityLog.ACTIONS.ORDER_CANCELLATION_REJECTED;
+      
+      const activityDetails = {
+        orderId: orderId,
+        orderNumber: result.rows[0].order_number,
+        adminNotes: adminNotes,
+        orderTotal: parseFloat(order.total),
+        paymentMethod: order.payment_method
+      };
+      
+      if (approved && refundInfo) {
+        activityDetails.refundInfo = refundInfo;
+      }
+      
+      await ActivityLog.create({
+        userId: adminId,
+        action: activityAction,
+        details: activityDetails
+      });
+    } catch (logError) {
+      console.error('Failed to log cancellation approval/rejection activity:', logError);
+    }
+    
+    const updatedOrder = result.rows[0];
+    if (refundInfo) {
+      updatedOrder.refund_info = refundInfo;
+    }
+    
+    return updatedOrder;
+    
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+
+/**
+ * Get pending cancellation requests
+ * @returns {Promise<Array>} Orders with pending cancellation requests
+ */
+const getCancellationRequests = async () => {
+  const result = await db.query(
+    `SELECT o.*, 
+            u1.first_name as requester_first_name, 
+            u1.last_name as requester_last_name,
+            u2.first_name as creator_first_name,
+            u2.last_name as creator_last_name
+     FROM orders o
+     LEFT JOIN users u1 ON u1.id = o.cancellation_requested_by
+     LEFT JOIN users u2 ON u2.id = o.created_by
+     WHERE o.cancellation_requested_by IS NOT NULL 
+       AND o.status = $1
+     ORDER BY o.cancellation_requested_at DESC`,
+    [ORDER_STATUS.CONFIRMED]
+  );
+  
+  return result.rows;
+};
+
+/**
+ * Get order status history
+ * @param {string} orderId - Order UUID
+ * @returns {Promise<Array>} Status history entries
+ */
+const getOrderStatusHistory = async (orderId) => {
+  const result = await db.query(
+    `SELECT osh.*, u.first_name, u.last_name
+     FROM order_status_history osh
+     LEFT JOIN users u ON u.id = osh.changed_by
+     WHERE osh.order_id = $1
+     ORDER BY osh.created_at DESC`,
+    [orderId]
+  );
+  
+  return result.rows;
 };
 
 /**
@@ -487,10 +790,15 @@ const findAllWithItems = async ({
 module.exports = {
   PAYMENT_METHODS,
   PAYMENT_STATUS,
+  ORDER_STATUS,
   create,
   findAll,
   findAllWithItems,
   findById,
   updatePaymentStatus,
+  requestCancellation,
+  approveCancellation,
+  getCancellationRequests,
+  getOrderStatusHistory,
   getStats,
 };

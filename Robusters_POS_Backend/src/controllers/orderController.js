@@ -243,10 +243,122 @@ const getOrderStats = async (req, res, next) => {
   }
 };
 
+/**
+ * Request order cancellation
+ * POST /api/orders/:id/cancel-request
+ */
+const requestCancellation = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const managerId = req.user.id;
+
+    if (!reason || reason.trim().length === 0) {
+      throw new BadRequestError('Cancellation reason is required');
+    }
+
+    const order = await Order.requestCancellation(id, managerId, reason.trim());
+
+    // Create appropriate message based on payment method
+    let message = 'Cancellation request submitted successfully';
+    if (order.refund_info && order.refund_info.payment_method === 'LOYALTY') {
+      message += `. ${order.refund_info.loyalty_points} loyalty points will be refunded upon approval.`;
+    } else if (order.refund_info && order.refund_info.amount > 0) {
+      message += `. ₹${order.refund_info.amount} will be refunded upon approval.`;
+    }
+
+    res.json({
+      success: true,
+      data: { order },
+      message,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Approve or reject order cancellation
+ * POST /api/orders/:id/cancel-approve
+ */
+const approveCancellation = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { approved, adminNotes = '' } = req.body;
+    const adminId = req.user.id;
+
+    if (typeof approved !== 'boolean') {
+      throw new BadRequestError('Approved field must be a boolean');
+    }
+
+    const order = await Order.approveCancellation(id, adminId, approved, adminNotes);
+
+    let message = approved 
+      ? 'Order cancellation approved successfully'
+      : 'Order cancellation rejected successfully';
+
+    // Add refund information to message if approved
+    if (approved && order.refund_info) {
+      if (order.refund_info.payment_method === 'LOYALTY') {
+        message += `. ${order.refund_info.loyalty_points_refunded} loyalty points have been refunded to the customer.`;
+      } else if (order.refund_info.amount > 0) {
+        message += `. ₹${order.refund_info.amount} refund has been processed.`;
+      }
+    }
+
+    res.json({
+      success: true,
+      data: { order },
+      message,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get pending cancellation requests
+ * GET /api/orders/cancellation-requests
+ */
+const getCancellationRequests = async (req, res, next) => {
+  try {
+    const requests = await Order.getCancellationRequests();
+
+    res.json({
+      success: true,
+      data: { requests },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get order status history
+ * GET /api/orders/:id/status-history
+ */
+const getOrderStatusHistory = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const history = await Order.getOrderStatusHistory(id);
+
+    res.json({
+      success: true,
+      data: { history },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createOrder,
   getOrders,
   getOrder,
   updatePaymentStatus,
   getOrderStats,
+  requestCancellation,
+  approveCancellation,
+  getCancellationRequests,
+  getOrderStatusHistory,
 };

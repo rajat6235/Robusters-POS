@@ -7,12 +7,14 @@ const express = require('express');
 const router = express.Router();
 
 const orderController = require('../controllers/orderController');
-const { authenticate, managerOrAdmin } = require('../middleware/auth');
+const { authenticate, managerOrAdmin, adminOnly } = require('../middleware/auth');
 const {
   validate,
   uuidParam,
   createOrderRules,
   updatePaymentStatusRules,
+  cancelRequestRules,
+  cancelApprovalRules,
 } = require('../validators/orders');
 
 /**
@@ -39,6 +41,18 @@ router.get(
   authenticate,
   managerOrAdmin,
   orderController.getOrders
+);
+
+/**
+ * @route   GET /api/orders/cancellation-requests
+ * @desc    Get pending cancellation requests
+ * @access  Private (Admin only)
+ */
+router.get(
+  '/cancellation-requests',
+  authenticate,
+  adminOnly,
+  orderController.getCancellationRequests
 );
 
 /**
@@ -77,6 +91,45 @@ router.patch(
   managerOrAdmin,
   [uuidParam('id'), ...updatePaymentStatusRules, validate],
   orderController.updatePaymentStatus
+);
+
+/**
+ * @route   POST /api/orders/:id/cancel-request
+ * @desc    Request order cancellation
+ * @access  Private (Manager/Admin)
+ */
+router.post(
+  '/:id/cancel-request',
+  authenticate,
+  managerOrAdmin,
+  [uuidParam('id'), ...cancelRequestRules, validate],
+  orderController.requestCancellation
+);
+
+/**
+ * @route   POST /api/orders/:id/cancel-approve
+ * @desc    Approve or reject order cancellation
+ * @access  Private (Admin only)
+ */
+router.post(
+  '/:id/cancel-approve',
+  authenticate,
+  adminOnly,
+  [uuidParam('id'), ...cancelApprovalRules, validate],
+  orderController.approveCancellation
+);
+
+/**
+ * @route   GET /api/orders/:id/status-history
+ * @desc    Get order status history
+ * @access  Private (Manager/Admin)
+ */
+router.get(
+  '/:id/status-history',
+  authenticate,
+  managerOrAdmin,
+  [uuidParam('id'), validate],
+  orderController.getOrderStatusHistory
 );
 
 module.exports = router;

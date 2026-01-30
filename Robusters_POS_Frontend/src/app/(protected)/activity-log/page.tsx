@@ -34,6 +34,11 @@ const ACTION_LABELS: Record<string, { label: string; variant: 'default' | 'secon
   USER_UPDATED: { label: 'User Updated', variant: 'secondary' },
   USER_DEACTIVATED: { label: 'User Deactivated', variant: 'destructive' },
   USER_ACTIVATED: { label: 'User Activated', variant: 'default' },
+  ORDER_CREATED: { label: 'Order Created', variant: 'default' },
+  ORDER_CANCELLED: { label: 'Order Cancelled', variant: 'destructive' },
+  ORDER_CANCELLATION_REQUESTED: { label: 'Cancellation Requested', variant: 'outline' },
+  ORDER_CANCELLATION_APPROVED: { label: 'Cancellation Approved', variant: 'destructive' },
+  ORDER_CANCELLATION_REJECTED: { label: 'Cancellation Rejected', variant: 'secondary' },
 };
 
 const ITEMS_PER_PAGE = 20;

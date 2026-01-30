@@ -48,6 +48,7 @@ export interface Order {
   payment_method?: 'CASH' | 'CARD' | 'UPI' | 'LOYALTY'; // Backend returns snake_case
   paymentStatus?: 'PENDING' | 'PAID' | 'FAILED';
   payment_status?: 'PENDING' | 'PAID' | 'FAILED'; // Backend returns snake_case
+  status?: 'CONFIRMED' | 'CANCELLED';
   notes?: string;
   createdBy?: string;
   created_by?: string; // Backend returns snake_case
@@ -61,6 +62,14 @@ export interface Order {
   location_name?: string; // Backend returns snake_case
   first_name?: string; // Created-by user first name
   last_name?: string; // Created-by user last name
+  // Cancellation fields
+  cancellation_requested_by?: string;
+  cancellation_requested_at?: string;
+  cancellation_reason?: string;
+  cancelled_by?: string;
+  cancelled_at?: string;
+  requester_first_name?: string;
+  requester_last_name?: string;
 }
 
 export interface OrdersResponse {
@@ -82,6 +91,30 @@ export interface CreateOrderResponse {
     order: Order;
   };
   message: string;
+}
+
+export interface CancellationRequest {
+  id: string;
+  order_number: string;
+  customer_name?: string;
+  customer_phone?: string;
+  total: number;
+  cancellation_reason: string;
+  cancellation_requested_at: string;
+  requester_first_name: string;
+  requester_last_name: string;
+  creator_first_name?: string;
+  creator_last_name?: string;
+}
+
+export interface StatusHistoryEntry {
+  id: number;
+  previous_status: string;
+  new_status: string;
+  reason?: string;
+  created_at: string;
+  first_name?: string;
+  last_name?: string;
 }
 
 export const orderService = {
@@ -139,6 +172,37 @@ export const orderService = {
     if (endDate) params.append('endDate', endDate);
 
     const response = await apiClient.get(`/orders/stats?${params.toString()}`);
+    return response.data;
+  },
+
+  // Request order cancellation
+  async requestCancellation(orderId: string, reason: string): Promise<{ success: boolean; data: { order: Order }; message: string }> {
+    const response = await apiClient.post(`/orders/${orderId}/cancel-request`, { reason });
+    return response.data;
+  },
+
+  // Approve or reject order cancellation
+  async approveCancellation(
+    orderId: string, 
+    approved: boolean, 
+    adminNotes?: string
+  ): Promise<{ success: boolean; data: { order: Order }; message: string }> {
+    const response = await apiClient.post(`/orders/${orderId}/cancel-approve`, { 
+      approved, 
+      adminNotes 
+    });
+    return response.data;
+  },
+
+  // Get pending cancellation requests
+  async getCancellationRequests(): Promise<{ success: boolean; data: { requests: CancellationRequest[] } }> {
+    const response = await apiClient.get('/orders/cancellation-requests');
+    return response.data;
+  },
+
+  // Get order status history
+  async getOrderStatusHistory(orderId: string): Promise<{ success: boolean; data: { history: StatusHistoryEntry[] } }> {
+    const response = await apiClient.get(`/orders/${orderId}/status-history`);
     return response.data;
   },
 };

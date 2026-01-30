@@ -94,6 +94,31 @@ const updatePaymentStatusRules = [
 ];
 
 /**
+ * Validation rules for requesting order cancellation
+ */
+const cancelRequestRules = [
+  body('reason')
+    .trim()
+    .isLength({ min: 5, max: 500 })
+    .withMessage('Cancellation reason must be between 5 and 500 characters'),
+];
+
+/**
+ * Validation rules for approving/rejecting order cancellation
+ */
+const cancelApprovalRules = [
+  body('approved')
+    .isBoolean()
+    .withMessage('Approved field must be a boolean'),
+
+  body('adminNotes')
+    .optional()
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage('Admin notes must be less than 500 characters'),
+];
+
+/**
  * Middleware to check validation results
  * Throws ValidationError if there are errors
  */
@@ -116,5 +141,7 @@ module.exports = {
   uuidParam,
   createOrderRules,
   updatePaymentStatusRules,
+  cancelRequestRules,
+  cancelApprovalRules,
   validate,
 };

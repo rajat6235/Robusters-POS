@@ -3,7 +3,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { MenuItem, Variant, Addon } from '@/types/menu';
-import { orderService, CreateOrderRequest, Order } from '@/services/orderService';
+import { orderService, CreateOrderRequest, Order, CancellationRequest, StatusHistoryEntry } from '@/services/orderService';
+import { toast } from 'sonner';
 
 export interface CartItem {
   id: string;
@@ -28,6 +29,7 @@ export function calcItemUnitPrice(item: CartItem): number {
 interface OrderStore {
   cart: CartItem[];
   orders: Order[];
+  cancellationRequests: CancellationRequest[];
   customerPhone: string;
   customerName: string;
   customerId: string | null;
@@ -54,6 +56,12 @@ interface OrderStore {
   createOrder: (paymentMethod: 'CASH' | 'CARD' | 'UPI' | 'LOYALTY', notes?: string, locationId?: string, priceOverrides?: Record<string, number>) => Promise<Order>;
   loadOrders: (page?: number, limit?: number) => Promise<void>;
 
+  // Cancellation actions
+  requestCancellation: (orderId: string, reason: string) => Promise<void>;
+  approveCancellation: (orderId: string, approved: boolean, adminNotes?: string) => Promise<void>;
+  loadCancellationRequests: () => Promise<void>;
+  getOrderStatusHistory: (orderId: string) => Promise<StatusHistoryEntry[]>;
+
   // Calculated values (sync)
   getCartSubtotal: () => number;
   getCartTotal: () => number;
@@ -64,6 +72,7 @@ export const useOrderStore = create<OrderStore>()(
     (set, get) => ({
       cart: [],
       orders: [],
+      cancellationRequests: [],
       customerPhone: '',
       customerName: '',
       customerId: null,
@@ -183,6 +192,73 @@ export const useOrderStore = create<OrderStore>()(
             error: error.response?.data?.message || error.message || 'Failed to load orders',
             isLoading: false
           });
+        }
+      },
+
+      requestCancellation: async (orderId: string, reason: string) => {
+        set({ isLoading: true, error: null });
+        try {
+          const response = await orderService.requestCancellation(orderId, reason);
+          // Show the API message which includes loyalty points info
+          toast.success(response.message);
+          // Refresh orders to show updated status
+          await get().loadOrders();
+          set({ isLoading: false });
+        } catch (error: any) {
+          set({
+            error: error.response?.data?.message || error.message || 'Failed to request cancellation',
+            isLoading: false
+          });
+          throw error;
+        }
+      },
+
+      approveCancellation: async (orderId: string, approved: boolean, adminNotes?: string) => {
+        set({ isLoading: true, error: null });
+        try {
+          const response = await orderService.approveCancellation(orderId, approved, adminNotes);
+          // Show the API message which includes refund info
+          toast.success(response.message);
+          // Refresh orders and cancellation requests
+          await Promise.all([
+            get().loadOrders(),
+            get().loadCancellationRequests()
+          ]);
+          set({ isLoading: false });
+        } catch (error: any) {
+          set({
+            error: error.response?.data?.message || error.message || 'Failed to process cancellation',
+            isLoading: false
+          });
+          throw error;
+        }
+      },
+
+      loadCancellationRequests: async () => {
+        set({ isLoading: true, error: null });
+        try {
+          const response = await orderService.getCancellationRequests();
+          set({
+            cancellationRequests: response.data.requests || [],
+            isLoading: false
+          });
+        } catch (error: any) {
+          set({
+            error: error.response?.data?.message || error.message || 'Failed to load cancellation requests',
+            isLoading: false
+          });
+        }
+      },
+
+      getOrderStatusHistory: async (orderId: string): Promise<StatusHistoryEntry[]> => {
+        try {
+          const response = await orderService.getOrderStatusHistory(orderId);
+          return response.data.history || [];
+        } catch (error: any) {
+          set({
+            error: error.response?.data?.message || error.message || 'Failed to load order history'
+          });
+          return [];
         }
       },
 
