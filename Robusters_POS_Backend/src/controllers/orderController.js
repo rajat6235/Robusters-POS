@@ -86,6 +86,17 @@ const createOrder = async (req, res, next) => {
     const tax = 0;
     const total = subtotal;
 
+    // Validate loyalty payment: customer must exist and have enough points
+    if (paymentMethod === 'LOYALTY') {
+      if (!customer) {
+        throw new BadRequestError('Loyalty payment requires a linked customer');
+      }
+      const loyaltyPoints = parseInt(customer.loyalty_points) || 0;
+      if (loyaltyPoints < total) {
+        throw new BadRequestError(`Insufficient loyalty points. Customer has ${loyaltyPoints} points but order total is ${total}`);
+      }
+    }
+
     // Create order
     const order = await Order.create({
       customerPhone,
@@ -105,6 +116,11 @@ const createOrder = async (req, res, next) => {
     if (customer) {
       await Customer.linkOrder(customer.id, order.id);
       await Customer.updateStats(customer.id, order.total);
+
+      // Deduct loyalty points if paying with loyalty
+      if (paymentMethod === 'LOYALTY') {
+        await Customer.deductLoyaltyPoints(customer.id, total);
+      }
     }
 
     res.status(201).json({

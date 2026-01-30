@@ -27,7 +27,7 @@ export interface CreateOrderRequest {
   customerPhone?: string;
   customerName?: string;
   items: OrderItem[];
-  paymentMethod: 'CASH' | 'CARD' | 'UPI';
+  paymentMethod: 'CASH' | 'CARD' | 'UPI' | 'LOYALTY';
   notes?: string;
   locationId?: string;
 }
@@ -44,8 +44,8 @@ export interface Order {
   subtotal: number | string; // Backend might return as string
   tax: number | string; // Backend might return as string
   total: number | string; // Backend might return as string
-  paymentMethod?: 'CASH' | 'CARD' | 'UPI';
-  payment_method?: 'CASH' | 'CARD' | 'UPI'; // Backend returns snake_case
+  paymentMethod?: 'CASH' | 'CARD' | 'UPI' | 'LOYALTY';
+  payment_method?: 'CASH' | 'CARD' | 'UPI' | 'LOYALTY'; // Backend returns snake_case
   paymentStatus?: 'PENDING' | 'PAID' | 'FAILED';
   payment_status?: 'PENDING' | 'PAID' | 'FAILED'; // Backend returns snake_case
   notes?: string;

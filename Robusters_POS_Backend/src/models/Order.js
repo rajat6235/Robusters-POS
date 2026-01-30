@@ -10,6 +10,7 @@ const PAYMENT_METHODS = {
   CASH: 'CASH',
   CARD: 'CARD',
   UPI: 'UPI',
+  LOYALTY: 'LOYALTY',
 };
 
 // Valid payment statuses

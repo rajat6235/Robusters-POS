@@ -23,7 +23,7 @@ import { toast } from 'sonner';
 import {
   ShoppingCart, Plus, Minus, Trash2, Search, Check, Loader2,
   User, ArrowLeft, UserPlus, SkipForward, Receipt,
-  Star, CreditCard, ChevronUp, MapPin, Pencil, X
+  Star, CreditCard, ChevronUp, MapPin, Pencil, X, Gift
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -422,7 +422,7 @@ export default function OrdersPage() {
   const [selectedAddons, setSelectedAddons] = useState<{ addon: Addon; quantity: number }[]>([]);
   const [showCheckout, setShowCheckout] = useState(false);
   const [showCart, setShowCart] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'UPI'>('CASH');
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'UPI' | 'LOYALTY'>('CASH');
   const [orderNotes, setOrderNotes] = useState('');
 
   // Location
@@ -884,7 +884,7 @@ export default function OrdersPage() {
             {/* Payment Method */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Payment Method</label>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 {(['CASH', 'CARD', 'UPI'] as const).map(method => (
                   <Button
                     key={method}
@@ -898,6 +898,27 @@ export default function OrdersPage() {
                   </Button>
                 ))}
               </div>
+              {/* Loyalty Points Payment - only if customer has enough points */}
+              {orderCustomer && (() => {
+                const loyaltyPoints = Number(orderCustomer.loyalty_points || 0);
+                const checkoutTotal = getCheckoutTotal();
+                const canUseLoyalty = loyaltyPoints >= checkoutTotal && checkoutTotal > 0;
+                return (
+                  <Button
+                    variant={paymentMethod === 'LOYALTY' ? 'default' : 'outline'}
+                    size="sm"
+                    className="w-full"
+                    disabled={!canUseLoyalty}
+                    onClick={() => setPaymentMethod('LOYALTY')}
+                  >
+                    <Gift className="h-3 w-3 mr-1" />
+                    Loyalty Points ({loyaltyPoints} pts)
+                    {!canUseLoyalty && loyaltyPoints > 0 && (
+                      <span className="text-xs ml-1 opacity-70">— not enough</span>
+                    )}
+                  </Button>
+                );
+              })()}
             </div>
 
             {/* Order Notes */}

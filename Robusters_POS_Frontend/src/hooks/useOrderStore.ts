@@ -51,7 +51,7 @@ interface OrderStore {
   clearCustomerInfo: () => void;
 
   // Order actions
-  createOrder: (paymentMethod: 'CASH' | 'CARD' | 'UPI', notes?: string, locationId?: string, priceOverrides?: Record<string, number>) => Promise<Order>;
+  createOrder: (paymentMethod: 'CASH' | 'CARD' | 'UPI' | 'LOYALTY', notes?: string, locationId?: string, priceOverrides?: Record<string, number>) => Promise<Order>;
   loadOrders: (page?: number, limit?: number) => Promise<void>;
 
   // Calculated values (sync)

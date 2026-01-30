@@ -425,6 +425,19 @@ class Customer {
     return result.rows;
   }
 
+  static async deductLoyaltyPoints(customerId, points) {
+    const query = `
+      UPDATE customers
+      SET loyalty_points = loyalty_points - $2,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1 AND loyalty_points >= $2
+      RETURNING *
+    `;
+
+    const result = await db.query(query, [customerId, points]);
+    return result.rows[0];
+  }
+
   static async getTopCustomers(limit = 10) {
     const query = `
       SELECT c.*, 
