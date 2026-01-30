@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { Customer, customerService } from '@/services/customerService';
-import { useCustomerStore } from '@/hooks/useCustomerStore';
 import { useSettingsStore } from '@/hooks/useSettingsStore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,10 +16,9 @@ import {
 
 interface CustomerProfileProps {
   customer: Customer;
-  onClose?: () => void;
 }
 
-export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
+export function CustomerProfile({ customer }: CustomerProfileProps) {
   const [orderHistory, setOrderHistory] = useState<any[]>([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
@@ -103,10 +101,6 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
             </div>
           </div>
         </div>
-        
-        <Button variant="outline" onClick={onClose} className="w-full sm:w-auto">
-          Close
-        </Button>
       </div>
 
       {/* Customer Stats */}

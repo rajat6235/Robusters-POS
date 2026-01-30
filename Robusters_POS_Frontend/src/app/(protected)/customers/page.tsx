@@ -337,7 +337,6 @@ export default function CustomersPage() {
           {selectedCustomer && (
             <CustomerProfile
               customer={selectedCustomer}
-              onClose={() => setShowProfileDialog(false)}
             />
           )}
         </DialogContent>
