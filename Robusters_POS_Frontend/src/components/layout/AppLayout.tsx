@@ -17,6 +17,7 @@ import {
   Shield,
   History,
   MapPin,
+  Settings,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -120,7 +121,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       { href: '/menu', icon: <UtensilsCrossed className="h-5 w-5" />, label: 'Menu Management' },
       { href: '/locations', icon: <MapPin className="h-5 w-5" />, label: 'Locations' },
       { href: '/users', icon: <Shield className="h-5 w-5" />, label: 'User Management' },
-      { href: '/activity-log', icon: <History className="h-5 w-5" />, label: 'Activity Log' }
+      { href: '/activity-log', icon: <History className="h-5 w-5" />, label: 'Activity Log' },
+      { href: '/settings', icon: <Settings className="h-5 w-5" />, label: 'Settings' }
     );
   }
 

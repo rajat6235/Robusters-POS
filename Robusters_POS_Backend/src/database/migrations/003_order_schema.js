@@ -34,7 +34,6 @@ CREATE TABLE IF NOT EXISTS orders (
     subtotal DECIMAL(10,2) NOT NULL DEFAULT 0,
     tax DECIMAL(10,2) NOT NULL DEFAULT 0,
     total DECIMAL(10,2) NOT NULL DEFAULT 0,
-    status order_status NOT NULL DEFAULT 'PENDING',
     payment_method payment_method NOT NULL,
     payment_status payment_status NOT NULL DEFAULT 'PENDING',
     notes TEXT,
@@ -59,7 +58,6 @@ CREATE TABLE IF NOT EXISTS order_items (
 
 -- Indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_orders_order_number ON orders(order_number);
-CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
 CREATE INDEX IF NOT EXISTS idx_orders_customer_phone ON orders(customer_phone);
 CREATE INDEX IF NOT EXISTS idx_orders_created_by ON orders(created_by);

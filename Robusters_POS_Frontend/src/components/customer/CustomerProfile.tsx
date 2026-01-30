@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Customer, customerService } from '@/services/customerService';
 import { useCustomerStore } from '@/hooks/useCustomerStore';
+import { useSettingsStore } from '@/hooks/useSettingsStore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -23,6 +24,11 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
   const [orderHistory, setOrderHistory] = useState<any[]>([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
+  const { tierThresholds, vipThreshold, fetchPublicSettings } = useSettingsStore();
+
+  useEffect(() => {
+    fetchPublicSettings();
+  }, [fetchPublicSettings]);
 
   useEffect(() => {
     if (activeTab === 'orders') {
@@ -57,10 +63,19 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
 
   const getCustomerTier = (totalSpent: number | string) => {
     const spent = typeof totalSpent === 'string' ? parseFloat(totalSpent) : totalSpent;
-    if (spent >= 10000) return { name: 'Platinum', color: 'bg-purple-500' };
-    if (spent >= 5000) return { name: 'Gold', color: 'bg-yellow-500' };
-    if (spent >= 2000) return { name: 'Silver', color: 'bg-gray-400' };
+    
+    // Use dynamic thresholds if available, otherwise fallback to defaults
+    const thresholds = tierThresholds || { bronze: 0, silver: 2000, gold: 5000, platinum: 10000 };
+    
+    if (spent >= thresholds.platinum) return { name: 'Platinum', color: 'bg-purple-500' };
+    if (spent >= thresholds.gold) return { name: 'Gold', color: 'bg-yellow-500' };
+    if (spent >= thresholds.silver) return { name: 'Silver', color: 'bg-gray-400' };
     return { name: 'Bronze', color: 'bg-orange-500' };
+  };
+
+  const isVipCustomer = () => {
+    const minOrders = vipThreshold?.min_orders || 10;
+    return Number(customer.total_orders || 0) >= minOrders;
   };
 
   const tier = getCustomerTier(Number(customer.total_spent || 0));
@@ -82,7 +97,7 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
             </h2>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               <Badge className={tier.color}>{tier.name}</Badge>
-              {Number(customer.total_orders || 0) > 10 && (
+              {isVipCustomer() && (
                 <Badge variant="secondary">VIP Customer</Badge>
               )}
             </div>

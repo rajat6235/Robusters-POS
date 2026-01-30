@@ -13,6 +13,7 @@ const { createActivityLogSchema } = require('./migrations/005_activity_log');
 const { removeTaxCalculation } = require('./migrations/008_remove_tax_calculation');
 const { createLocationsSchema } = require('./migrations/009_locations');
 const { addLoyaltyPayment } = require('./migrations/010_loyalty_payment');
+const { createSettingsSchema } = require('./migrations/011_settings');
 
 const useSSL = process.env.DB_SSL === 'true';
 const dbName = process.env.DB_NAME || 'robusters_pos';
@@ -116,6 +117,10 @@ async function initDatabase() {
     console.log('Adding loyalty payment method...');
     await pool.query(addLoyaltyPayment);
     console.log('Loyalty payment method added successfully.');
+
+    console.log('Creating settings table...');
+    await pool.query(createSettingsSchema);
+    console.log('Settings table created successfully.');
 
     await pool.end();
     console.log('\nDatabase initialization complete!');

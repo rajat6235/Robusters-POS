@@ -108,17 +108,22 @@ class Customer {
   }
 
   static async updateStats(customerId, orderTotal) {
+    // Fetch configured loyalty points ratio (lazy require to avoid circular deps)
+    const Settings = require('./Settings');
+    const ratio = await Settings.getLoyaltyRatio();
+    const pointsToAdd = Math.floor(orderTotal / ratio.spend_amount) * ratio.points_earned;
+
     const query = `
-      UPDATE customers 
+      UPDATE customers
       SET total_orders = total_orders + 1,
           total_spent = total_spent + $2,
-          loyalty_points = loyalty_points + FLOOR($2 / 10),
+          loyalty_points = loyalty_points + $3,
           updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
       RETURNING *
     `;
 
-    const result = await db.query(query, [customerId, orderTotal]);
+    const result = await db.query(query, [customerId, orderTotal, pointsToAdd]);
     return result.rows[0];
   }
 

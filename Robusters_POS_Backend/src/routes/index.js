@@ -14,6 +14,7 @@ const customerRoutes = require('./customers');
 const activityLogRoutes = require('./activityLogs');
 const dashboardRoutes = require('./dashboard');
 const locationRoutes = require('./locations');
+const settingsRoutes = require('./settings');
 
 // Mount routes
 router.use('/auth', authRoutes);
@@ -24,5 +25,6 @@ router.use('/customers', customerRoutes);
 router.use('/activity-logs', activityLogRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/locations', locationRoutes);
+router.use('/settings', settingsRoutes);
 
 module.exports = router;

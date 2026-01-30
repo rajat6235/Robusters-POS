@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useCustomerStore } from '@/hooks/useCustomerStore';
+import { useSettingsStore } from '@/hooks/useSettingsStore';
 import { Customer } from '@/services/customerService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -36,6 +37,8 @@ export default function CustomersPage() {
     clearError
   } = useCustomerStore();
 
+  const { vipThreshold, fetchPublicSettings } = useSettingsStore();
+
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -57,6 +60,11 @@ export default function CustomersPage() {
   useEffect(() => {
     loadCustomers(1, 20, debouncedSearch, sortBy);
   }, [loadCustomers, debouncedSearch, sortBy]);
+
+  // Load settings
+  useEffect(() => {
+    fetchPublicSettings();
+  }, [fetchPublicSettings]);
 
   // Clear error when component unmounts
   useEffect(() => {
@@ -85,6 +93,11 @@ export default function CustomersPage() {
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString();
+  };
+
+  const isVipCustomer = (customer: Customer) => {
+    const minOrders = vipThreshold?.min_orders || 10;
+    return Number(customer.total_orders || 0) >= minOrders;
   };
 
   const formatCurrency = (amount: number | string) => {
@@ -237,7 +250,7 @@ export default function CustomersPage() {
                         <h3 className="font-medium text-sm sm:text-base truncate">
                           {customer.first_name} {customer.last_name || ''}
                         </h3>
-                        {Number(customer.total_orders || 0) > 10 && (
+                        {isVipCustomer(customer) && (
                           <Badge variant="secondary" className="text-xs">VIP</Badge>
                         )}
                       </div>
