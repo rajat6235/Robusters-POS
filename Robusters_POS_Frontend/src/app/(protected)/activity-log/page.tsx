@@ -146,38 +146,38 @@ export default function ActivityLogPage() {
 
   // Mobile Card Component
   const MobileLogCard = ({ log }: { log: ActivityLog }) => (
-    <Card className="mb-3">
-      <CardContent className="p-4">
+    <Card>
+      <CardContent className="p-3 sm:p-4">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               {getActionBadge(log.action)}
             </div>
-            <div className="flex items-center gap-1 mt-2 text-sm">
-              <User className="h-3 w-3 text-muted-foreground" />
+            <div className="flex items-center gap-1 mt-2 text-xs sm:text-sm">
+              <User className="h-3 w-3 text-muted-foreground flex-shrink-0" />
               <span className="truncate">
                 {log.userName || log.userEmail || 'Unknown'}
               </span>
             </div>
           </div>
-          <div className="text-xs text-muted-foreground text-right shrink-0">
+          <div className="text-[10px] sm:text-xs text-muted-foreground text-right shrink-0">
             <div className="flex items-center gap-1 justify-end">
-              <Clock className="h-3 w-3" />
+              <Clock className="h-3 w-3 flex-shrink-0" />
               {formatDateShort(log.createdAt)}
             </div>
           </div>
         </div>
 
         {log.details && Object.keys(log.details).length > 0 && (
-          <div className="mt-3 pt-3 border-t">
+          <div className="mt-2 pt-2 border-t">
             {formatDetails(log.details)}
           </div>
         )}
 
         {log.ipAddress && (
           <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
-            <Globe className="h-3 w-3" />
-            {log.ipAddress}
+            <Globe className="h-3 w-3 flex-shrink-0" />
+            <span className="truncate">{log.ipAddress}</span>
           </div>
         )}
       </CardContent>
@@ -187,16 +187,16 @@ export default function ActivityLogPage() {
   if (isLoading && logs.length === 0) {
     return (
       <ProtectedRoute allowedRoles={['ADMIN']}>
-        <div className="space-y-4 md:space-y-6">
+        <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-2">
               <Skeleton className="h-8 w-36" />
-              <Skeleton className="h-4 w-72" />
+              <Skeleton className="h-4 w-48 sm:w-72" />
             </div>
-            <Skeleton className="h-9 w-24" />
+            <Skeleton className="h-9 w-full sm:w-24" />
           </div>
           <Card>
-            <CardHeader className="pb-3 md:pb-6">
+            <CardHeader className="p-3 sm:p-6 pb-3 sm:pb-6">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-1">
                   <Skeleton className="h-6 w-32" />
@@ -205,18 +205,18 @@ export default function ActivityLogPage() {
                 <Skeleton className="h-10 w-full sm:w-[180px]" />
               </div>
             </CardHeader>
-            <CardContent className="px-3 md:px-6">
+            <CardContent className="p-3 sm:p-6 pt-0">
               {/* Mobile skeleton */}
               <div className="md:hidden space-y-3">
                 {Array.from({ length: 5 }).map((_, i) => (
-                  <Card key={i} className="mb-3">
-                    <CardContent className="p-4 space-y-3">
+                  <Card key={i}>
+                    <CardContent className="p-3 space-y-3">
                       <div className="flex items-start justify-between">
                         <div className="space-y-2">
                           <Skeleton className="h-5 w-20 rounded-full" />
                           <Skeleton className="h-4 w-32" />
                         </div>
-                        <Skeleton className="h-3 w-24" />
+                        <Skeleton className="h-3 w-20" />
                       </div>
                     </CardContent>
                   </Card>
@@ -243,26 +243,26 @@ export default function ActivityLogPage() {
 
   return (
     <ProtectedRoute allowedRoles={['ADMIN']}>
-      <div className="space-y-4 md:space-y-6">
+      <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Activity Log</h1>
-            <p className="text-sm md:text-base text-muted-foreground">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Activity Log</h1>
+            <p className="text-sm sm:text-base text-muted-foreground">
               Track all login, logout, and user management activities
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={fetchLogs} disabled={isLoading}>
+          <Button variant="outline" size="sm" onClick={fetchLogs} disabled={isLoading} className="w-full sm:w-auto">
             <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
         </div>
 
         <Card>
-          <CardHeader className="pb-3 md:pb-6">
+          <CardHeader className="p-3 sm:p-6 pb-3 sm:pb-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <CardTitle className="text-lg md:text-xl">Activity History</CardTitle>
-                <CardDescription>
+                <CardTitle className="text-lg sm:text-xl">Activity History</CardTitle>
+                <CardDescription className="text-xs sm:text-sm">
                   {total} total activit{total !== 1 ? 'ies' : 'y'}
                 </CardDescription>
               </div>
@@ -284,7 +284,7 @@ export default function ActivityLogPage() {
               </Select>
             </div>
           </CardHeader>
-          <CardContent className="px-3 md:px-6">
+          <CardContent className="p-3 sm:p-6 pt-0">
             {logs.length === 0 ? (
               <div className="text-center text-muted-foreground py-8 border rounded-md">
                 No activity logs found
@@ -292,7 +292,7 @@ export default function ActivityLogPage() {
             ) : (
               <>
                 {/* Mobile View */}
-                <div className="md:hidden space-y-3">
+                <div className="md:hidden space-y-2 sm:space-y-3">
                   {logs.map((log) => (
                     <MobileLogCard key={log.id} log={log} />
                   ))}
@@ -338,8 +338,8 @@ export default function ActivityLogPage() {
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
-                <p className="text-sm text-muted-foreground">
+              <div className="flex items-center justify-between gap-3 mt-4">
+                <p className="text-xs sm:text-sm text-muted-foreground">
                   Page {currentPage} of {totalPages}
                 </p>
                 <div className="flex gap-2">
@@ -349,8 +349,8 @@ export default function ActivityLogPage() {
                     onClick={handlePrevPage}
                     disabled={currentPage === 1 || isLoading}
                   >
-                    <ChevronLeft className="h-4 w-4 mr-1" />
-                    <span className="hidden xs:inline">Previous</span>
+                    <ChevronLeft className="h-4 w-4 sm:mr-1" />
+                    <span className="hidden sm:inline">Previous</span>
                   </Button>
                   <Button
                     variant="outline"
@@ -358,8 +358,8 @@ export default function ActivityLogPage() {
                     onClick={handleNextPage}
                     disabled={currentPage === totalPages || isLoading}
                   >
-                    <span className="hidden xs:inline">Next</span>
-                    <ChevronRight className="h-4 w-4 ml-1" />
+                    <span className="hidden sm:inline">Next</span>
+                    <ChevronRight className="h-4 w-4 sm:ml-1" />
                   </Button>
                 </div>
               </div>
