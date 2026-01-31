@@ -293,19 +293,58 @@ const findByCategory = async (categoryId) => {
 /**
  * Search menu items
  * @param {string} searchTerm - Search term
+ * @param {Object} options - Search options
+ * @param {string} options.categoryId - Optional category ID to filter by
  * @returns {Promise<Array>} Matching items
  */
-const search = async (searchTerm) => {
-  const result = await db.query(
-    `SELECT mi.*, c.name as category_name
+const search = async (searchTerm, { categoryId } = {}) => {
+  let query = `SELECT mi.*, c.name as category_name, c.slug as category_slug
      FROM menu_items mi
      JOIN categories c ON c.id = mi.category_id
      WHERE mi.is_available = true
-       AND (mi.name ILIKE $1 OR mi.description ILIKE $1)
-     ORDER BY mi.name ASC
-     LIMIT 50`,
-    [`%${searchTerm}%`]
-  );
+       AND (mi.name ILIKE $1 OR mi.description ILIKE $1)`;
+
+  const params = [`%${searchTerm}%`];
+
+  if (categoryId) {
+    query += ` AND mi.category_id = $2`;
+    params.push(categoryId);
+  }
+
+  query += ` ORDER BY mi.name ASC LIMIT 50`;
+
+  const result = await db.query(query, params);
+
+  // Fetch variants for all items (same as findAll)
+  const itemIds = result.rows.map((item) => item.id);
+  if (itemIds.length > 0) {
+    const variantsResult = await db.query(
+      `SELECT * FROM item_variants
+       WHERE menu_item_id = ANY($1)
+       ORDER BY display_order ASC`,
+      [itemIds]
+    );
+
+    // Group variants by item
+    const variantsByItem = {};
+    for (const variant of variantsResult.rows) {
+      if (!variantsByItem[variant.menu_item_id]) {
+        variantsByItem[variant.menu_item_id] = [];
+      }
+      variantsByItem[variant.menu_item_id].push(variant);
+    }
+
+    // Attach variants to items
+    for (const item of result.rows) {
+      item.variants = variantsByItem[item.id] || [];
+    }
+  } else {
+    // If no items, ensure empty variants array
+    for (const item of result.rows) {
+      item.variants = [];
+    }
+  }
+
   return result.rows;
 };
 

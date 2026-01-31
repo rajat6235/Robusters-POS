@@ -9,6 +9,7 @@ const ItemVariant = require('../models/ItemVariant');
 const Addon = require('../models/Addon');
 const { calculateItemPrice, calculateOrderTotal } = require('../utils/priceCalculator');
 const { NotFoundError, ConflictError, BadRequestError } = require('../utils/errors');
+const { toCamelCase } = require('../utils/caseConverter');
 
 // =============================================
 // CATEGORY CONTROLLERS
@@ -354,17 +355,20 @@ const toggleItemAvailability = async (req, res, next) => {
  */
 const searchItems = async (req, res, next) => {
   try {
-    const { q } = req.query;
+    const { q, categoryId } = req.query;
 
     if (!q || q.length < 2) {
       throw new BadRequestError('Search query must be at least 2 characters');
     }
 
-    const items = await MenuItem.search(q);
+    const items = await MenuItem.search(q, { categoryId });
+
+    // Convert snake_case to camelCase for frontend
+    const camelCasedItems = toCamelCase(items);
 
     res.json({
       success: true,
-      data: { items, count: items.length },
+      data: { items: camelCasedItems, count: items.length },
     });
   } catch (error) {
     next(error);

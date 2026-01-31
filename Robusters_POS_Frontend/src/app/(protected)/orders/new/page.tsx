@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMenuStore } from '@/hooks/useMenuStore';
 import { useOrderStore, calcItemUnitPrice } from '@/hooks/useOrderStore';
 import { useLocationStore } from '@/hooks/useLocationStore';
 import { customerService, Customer } from '@/services/customerService';
+import { menuService } from '@/services/menuService';
 import { CustomerForm } from '@/components/customer/CustomerForm';
 import { MenuItem, Variant, Addon, DietType } from '@/types/menu';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -416,6 +417,10 @@ export default function OrdersPage() {
 
   const [selectedCategory, setSelectedCategory] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchingMenu, setIsSearchingMenu] = useState(false);
+  const [searchResults, setSearchResults] = useState<MenuItem[]>([]);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [selectedVariants, setSelectedVariants] = useState<Variant[]>([]);
   const [quantity, setQuantity] = useState(1);
@@ -447,14 +452,62 @@ export default function OrdersPage() {
     }
   }, [categories, selectedCategory]);
 
+  // Debounce search input
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 300);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [searchQuery]);
+
+  // Perform backend search
+  useEffect(() => {
+    const performSearch = async () => {
+      const trimmed = debouncedSearch.trim();
+
+      if (!trimmed || trimmed.length < 2) {
+        setSearchResults([]);
+        return;
+      }
+
+      setIsSearchingMenu(true);
+      try {
+        const response = await menuService.searchMenuItems(trimmed);
+        setSearchResults(response.items);
+        // Clear category selection when searching
+        setSelectedCategory('');
+      } catch (error: any) {
+        toast.error(error.message || 'Search failed');
+        setSearchResults([]);
+      } finally {
+        setIsSearchingMenu(false);
+      }
+    };
+
+    performSearch();
+  }, [debouncedSearch]);
+
   // Cart totals (sync, no tax)
   const cartSubtotal = useMemo(() => getCartSubtotal(), [cart, getCartSubtotal]);
   const cartTotal = useMemo(() => getCartTotal(), [cart, getCartTotal]);
 
   const currentCategory = categories?.find((c) => c.id === selectedCategory);
-  const filteredItems = currentCategory?.items?.filter((item) =>
-    item.name.toLowerCase().includes(searchQuery.toLowerCase()) && item.isAvailable
-  ) || [];
+  const filteredItems = useMemo(() => {
+    // If actively searching, use search results
+    if (searchQuery.trim().length >= 2) {
+      return searchResults;
+    }
+
+    // Otherwise, filter by category (existing behavior)
+    if (!selectedCategory) return [];
+    const currentCategory = categories?.find((c) => c.id === selectedCategory);
+    return currentCategory?.items?.filter((item) => item.isAvailable) || [];
+  }, [searchQuery, searchResults, selectedCategory, categories]);
 
   const handleCustomerSelected = (customer: Customer) => {
     setOrderCustomer(customer);
@@ -474,6 +527,13 @@ export default function OrdersPage() {
 
   const handleChangeCustomer = () => {
     setStep('customer');
+  };
+
+  const handleCategorySelect = (categoryId: string) => {
+    setSelectedCategory(categoryId);
+    setSearchQuery(''); // Clear search
+    setSearchResults([]); // Clear results
+    setDebouncedSearch(''); // Clear debounced search
   };
 
   const handleSelectItem = (item: MenuItem) => {
@@ -599,8 +659,13 @@ export default function OrdersPage() {
             placeholder="Search menu..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 h-10"
+            className="pl-10 pr-10 h-10"
           />
+          {isSearchingMenu && (
+            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+              <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+            </div>
+          )}
         </div>
       </div>
 
@@ -610,7 +675,7 @@ export default function OrdersPage() {
           {categories?.map((cat) => (
             <button
               key={cat.id}
-              onClick={() => setSelectedCategory(cat.id)}
+              onClick={() => handleCategorySelect(cat.id)}
               className={cn(
                 'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
                 selectedCategory === cat.id

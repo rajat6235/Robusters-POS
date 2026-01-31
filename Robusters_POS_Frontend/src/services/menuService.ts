@@ -38,6 +38,20 @@ export const menuService = {
     const response = await apiClient.post<CalculateOrderResponse>('/menu/calculate-order', request);
     return response.data;
   },
+
+  async searchMenuItems(query: string, categoryId?: string): Promise<{ items: MenuItem[] }> {
+    const params = new URLSearchParams({ q: query });
+    if (categoryId) {
+      params.append('categoryId', categoryId);
+    }
+
+    const response = await apiClient.get<{
+      success: boolean;
+      data: { items: MenuItem[]; count: number }
+    }>(`/menu/search?${params}`);
+
+    return { items: response.data.data.items };
+  },
 };
 
 // ============ MANAGER APIs ============

@@ -422,6 +422,10 @@ const searchRules = [
     .withMessage('Search query is required')
     .isLength({ min: 2 })
     .withMessage('Search query must be at least 2 characters'),
+  query('categoryId')
+    .optional()
+    .isUUID()
+    .withMessage('Invalid category ID format'),
 ];
 
 module.exports = {
