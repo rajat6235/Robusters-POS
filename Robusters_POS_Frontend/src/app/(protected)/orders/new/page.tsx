@@ -421,6 +421,7 @@ export default function OrdersPage() {
   const [searchResults, setSearchResults] = useState<MenuItem[]>([]);
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const categoryRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [selectedVariants, setSelectedVariants] = useState<Variant[]>([]);
   const [quantity, setQuantity] = useState(1);
@@ -445,12 +446,7 @@ export default function OrdersPage() {
     loadMenu();
   }, [loadMenu]);
 
-  // Set default category when categories load
-  useEffect(() => {
-    if (categories && categories.length > 0 && !selectedCategory) {
-      setSelectedCategory(categories[0].id);
-    }
-  }, [categories, selectedCategory]);
+  // Note: No longer auto-selecting first category since we show all categories
 
   // Debounce search input
   useEffect(() => {
@@ -479,8 +475,6 @@ export default function OrdersPage() {
       try {
         const response = await menuService.searchMenuItems(trimmed);
         setSearchResults(response.items);
-        // Clear category selection when searching
-        setSelectedCategory('');
       } catch (error: any) {
         toast.error(error.message || 'Search failed');
         setSearchResults([]);
@@ -496,18 +490,17 @@ export default function OrdersPage() {
   const cartSubtotal = useMemo(() => getCartSubtotal(), [cart, getCartSubtotal]);
   const cartTotal = useMemo(() => getCartTotal(), [cart, getCartTotal]);
 
-  const currentCategory = categories?.find((c) => c.id === selectedCategory);
-  const filteredItems = useMemo(() => {
-    // If actively searching, use search results
-    if (searchQuery.trim().length >= 2) {
-      return searchResults;
-    }
+  // Determine if we're in search mode
+  const isSearchMode = searchQuery.trim().length >= 2;
 
-    // Otherwise, filter by category (existing behavior)
-    if (!selectedCategory) return [];
-    const currentCategory = categories?.find((c) => c.id === selectedCategory);
-    return currentCategory?.items?.filter((item) => item.isAvailable) || [];
-  }, [searchQuery, searchResults, selectedCategory, categories]);
+  // Filter categories to show available items
+  const availableCategories = useMemo(() => {
+    if (!categories) return [];
+    return categories.map(cat => ({
+      ...cat,
+      items: cat.items?.filter(item => item.isAvailable) || []
+    })).filter(cat => cat.items.length > 0); // Only show categories with available items
+  }, [categories]);
 
   const handleCustomerSelected = (customer: Customer) => {
     setOrderCustomer(customer);
@@ -530,10 +523,39 @@ export default function OrdersPage() {
   };
 
   const handleCategorySelect = (categoryId: string) => {
-    setSelectedCategory(categoryId);
-    setSearchQuery(''); // Clear search
-    setSearchResults([]); // Clear results
-    setDebouncedSearch(''); // Clear debounced search
+    // Normalize "all" to empty string for consistency
+    const normalizedId = categoryId === 'all' ? '' : categoryId;
+    setSelectedCategory(normalizedId);
+
+    // If "all" is selected, just clear search if needed - don't scroll
+    if (categoryId === 'all') {
+      if (isSearchMode) {
+        setSearchQuery('');
+        setSearchResults([]);
+        setDebouncedSearch('');
+      }
+      return;
+    }
+
+    // If in search mode, clear search first
+    if (isSearchMode) {
+      setSearchQuery('');
+      setSearchResults([]);
+      setDebouncedSearch('');
+      // Wait for next tick to scroll after search is cleared
+      setTimeout(() => {
+        const categoryElement = categoryRefs.current[normalizedId];
+        if (categoryElement) {
+          categoryElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    } else {
+      // Scroll to category section immediately
+      const categoryElement = categoryRefs.current[normalizedId];
+      if (categoryElement) {
+        categoryElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
   };
 
   const handleSelectItem = (item: MenuItem) => {
@@ -669,18 +691,51 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      {/* Category Tabs - wrapping */}
-      <div className="shrink-0 px-1 mb-3">
-        <div className="flex flex-wrap gap-2">
+      {/* Category Navigation - Dropdown on mobile, Tabs on larger screens */}
+      <div className="shrink-0 sticky top-0 bg-background/95 backdrop-blur-sm z-20 px-1 py-2 mb-3 border-b">
+        {/* Mobile: Dropdown Select */}
+        <div className="sm:hidden">
+          <Select value={selectedCategory || "all"} onValueChange={handleCategorySelect}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select Category">
+                {selectedCategory && selectedCategory !== "all"
+                  ? categories?.find(c => c.id === selectedCategory)?.name || "All Categories"
+                  : "All Categories"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              {categories?.map((cat) => (
+                <SelectItem key={cat.id} value={cat.id}>
+                  {cat.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Tablet/Desktop: Tab Buttons */}
+        <div className="hidden sm:flex flex-wrap gap-2">
+          <button
+            onClick={() => handleCategorySelect('all')}
+            className={cn(
+              'px-3 py-1.5 rounded-lg text-sm font-medium transition-all',
+              !selectedCategory || selectedCategory === 'all'
+                ? 'bg-primary text-primary-foreground shadow-md'
+                : 'bg-muted text-muted-foreground hover:bg-muted/80 hover:shadow-sm'
+            )}
+          >
+            All
+          </button>
           {categories?.map((cat) => (
             <button
               key={cat.id}
               onClick={() => handleCategorySelect(cat.id)}
               className={cn(
-                'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                'px-3 py-1.5 rounded-lg text-sm font-medium transition-all',
                 selectedCategory === cat.id
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  ? 'bg-primary text-primary-foreground shadow-md'
+                  : 'bg-muted text-muted-foreground hover:bg-muted/80 hover:shadow-sm'
               )}
             >
               {cat.name}
@@ -689,31 +744,89 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      {/* Menu Items Grid - takes remaining space */}
-      <div className="flex-1 overflow-y-auto px-1 pb-2">
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-          {filteredItems.map((item) => (
-            <button
-              key={item.id}
-              className="text-left bg-card border rounded-lg p-3 hover:shadow-md transition-shadow active:scale-[0.98]"
-              onClick={() => handleSelectItem(item)}
-            >
-              <div className="flex items-start gap-2 mb-1">
-                <div className={cn('h-2.5 w-2.5 rounded-full mt-1 shrink-0', dietColors[item.dietType])} />
-                <h3 className="font-medium text-sm leading-tight line-clamp-2">{item.name}</h3>
+      {/* Menu Items - All Categories or Search Results */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden px-1 pb-2">
+        {isSearchMode ? (
+          /* Search Results View */
+          <>
+            <div className="mb-3">
+              <h3 className="text-sm font-semibold text-muted-foreground px-1">
+                Search Results ({searchResults.length})
+              </h3>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 w-full">
+              {searchResults.map((item) => (
+                <button
+                  key={item.id}
+                  className="text-left bg-card border rounded-lg p-3 hover:shadow-md transition-shadow active:scale-[0.98] min-w-0"
+                  onClick={() => handleSelectItem(item)}
+                >
+                  <div className="flex items-start gap-2 mb-1">
+                    <div className={cn('h-2.5 w-2.5 rounded-full mt-1 shrink-0', dietColors[item.dietType])} />
+                    <h3 className="font-medium text-sm leading-tight line-clamp-2">{item.name}</h3>
+                  </div>
+                  <p className="text-primary font-bold text-sm">
+                    {item.hasVariants && item.variants?.length > 0 ? (
+                      <>₹{itemDisplayPrice(item)}<span className="text-xs font-normal text-muted-foreground ml-1">+</span></>
+                    ) : (
+                      <>₹{item.basePrice}</>
+                    )}
+                  </p>
+                </button>
+              ))}
+            </div>
+            {searchResults.length === 0 && (
+              <p className="text-center text-muted-foreground py-12">No items found</p>
+            )}
+          </>
+        ) : (
+          /* All Categories View */
+          <div className="space-y-6">
+            {availableCategories.map((category) => (
+              <div
+                key={category.id}
+                ref={(el) => { categoryRefs.current[category.id] = el; }}
+                className="scroll-mt-4"
+              >
+                {/* Category Header */}
+                <div className="sticky top-0 bg-background/95 backdrop-blur-sm z-10 pb-2 mb-3">
+                  <h2 className="text-lg font-bold text-foreground px-1 border-b-2 border-primary pb-1">
+                    {category.name}
+                  </h2>
+                  {category.description && (
+                    <p className="text-xs text-muted-foreground px-1 mt-1">{category.description}</p>
+                  )}
+                </div>
+
+                {/* Category Items Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 w-full">
+                  {category.items.map((item) => (
+                    <button
+                      key={item.id}
+                      className="text-left bg-card border rounded-lg p-3 hover:shadow-md transition-shadow active:scale-[0.98] min-w-0"
+                      onClick={() => handleSelectItem(item)}
+                    >
+                      <div className="flex items-start gap-2 mb-1">
+                        <div className={cn('h-2.5 w-2.5 rounded-full mt-1 shrink-0', dietColors[item.dietType])} />
+                        <h3 className="font-medium text-sm leading-tight line-clamp-2">{item.name}</h3>
+                      </div>
+                      <p className="text-primary font-bold text-sm">
+                        {item.hasVariants && item.variants?.length > 0 ? (
+                          <>₹{itemDisplayPrice(item)}<span className="text-xs font-normal text-muted-foreground ml-1">+</span></>
+                        ) : (
+                          <>₹{item.basePrice}</>
+                        )}
+                      </p>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <p className="text-primary font-bold text-sm">
-                {item.hasVariants && item.variants?.length > 0 ? (
-                  <>₹{itemDisplayPrice(item)}<span className="text-xs font-normal text-muted-foreground ml-1">+</span></>
-                ) : (
-                  <>₹{item.basePrice}</>
-                )}
-              </p>
-            </button>
-          ))}
-        </div>
-        {filteredItems.length === 0 && (
-          <p className="text-center text-muted-foreground py-12">No items found</p>
+            ))}
+
+            {availableCategories.length === 0 && (
+              <p className="text-center text-muted-foreground py-12">No menu items available</p>
+            )}
+          </div>
         )}
       </div>
 
@@ -843,21 +956,39 @@ export default function OrdersPage() {
               {/* Add-ons */}
               {selectedItem.addons && selectedItem.addons.length > 0 && (
                 <div>
-                  <p className="text-sm font-medium mb-2">Add-ons</p>
-                  <div className="grid grid-cols-2 gap-2">
+                  <p className="text-sm font-medium mb-3">Add-ons (Optional)</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-60 overflow-y-auto">
                     {selectedItem.addons.map((addon) => {
                       const isSelected = selectedAddons.some((a) => a.addon.id === addon.id);
                       return (
-                        <Button
+                        <button
                           key={addon.id}
-                          variant={isSelected ? 'default' : 'outline'}
-                          size="sm"
-                          className="justify-start"
                           onClick={() => toggleAddon(addon)}
+                          className={cn(
+                            'relative flex items-start gap-2 p-3 rounded-lg border-2 text-left transition-all min-h-[60px]',
+                            isSelected
+                              ? 'border-primary bg-primary/10 shadow-sm'
+                              : 'border-muted hover:border-muted-foreground/30 hover:bg-muted/50'
+                          )}
                         >
-                          {isSelected && <Check className="h-3 w-3 mr-1" />}
-                          {addon.name} +₹{addon.price}
-                        </Button>
+                          {/* Checkbox indicator */}
+                          <div className={cn(
+                            'flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center mt-0.5',
+                            isSelected ? 'bg-primary border-primary' : 'border-muted-foreground/30'
+                          )}>
+                            {isSelected && <Check className="h-3 w-3 text-primary-foreground" />}
+                          </div>
+
+                          {/* Content */}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm leading-tight break-words">
+                              {addon.name}
+                            </p>
+                            <p className="text-primary font-bold text-sm mt-1">
+                              +₹{addon.price}
+                            </p>
+                          </div>
+                        </button>
                       );
                     })}
                   </div>

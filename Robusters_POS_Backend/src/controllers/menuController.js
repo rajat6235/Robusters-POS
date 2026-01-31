@@ -363,8 +363,26 @@ const searchItems = async (req, res, next) => {
 
     const items = await MenuItem.search(q, { categoryId });
 
+    // Get unique category IDs from search results
+    const categoryIds = [...new Set(items.map(item => item.category_id))];
+
+    // Load addons for each category
+    const addonsByCategory = {};
+    await Promise.all(
+      categoryIds.map(async (catId) => {
+        const addons = await Addon.findByCategory(catId);
+        addonsByCategory[catId] = addons;
+      })
+    );
+
+    // Attach addons to each item based on its category
+    const itemsWithAddons = items.map(item => ({
+      ...item,
+      addons: addonsByCategory[item.category_id] || []
+    }));
+
     // Convert snake_case to camelCase for frontend
-    const camelCasedItems = toCamelCase(items);
+    const camelCasedItems = toCamelCase(itemsWithAddons);
 
     res.json({
       success: true,
@@ -698,13 +716,21 @@ const getPublicMenu = async (req, res, next) => {
   try {
     const categories = await Category.findAllWithItemCounts();
 
-    // Get items for each category
+    // Get items and addons for each category
     const menu = await Promise.all(
       categories.map(async (category) => {
         const items = await MenuItem.findByCategory(category.id);
+        const categoryAddons = await Addon.findByCategory(category.id);
+
+        // Attach category addons to each item
+        const itemsWithAddons = items.map(item => ({
+          ...item,
+          addons: categoryAddons
+        }));
+
         return {
           ...category,
-          items,
+          items: itemsWithAddons,
         };
       })
     );
