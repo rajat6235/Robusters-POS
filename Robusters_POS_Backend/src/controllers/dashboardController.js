@@ -22,9 +22,6 @@ const getDashboardStats = async (req, res) => {
       endDate: today
     });
     
-    // Get overall stats for comparison
-    const overallStats = await Order.getStats();
-    
     // Get new customers today
     const newCustomersResult = await db.query(
       `SELECT COUNT(*) as count FROM customers 
@@ -39,7 +36,7 @@ const getDashboardStats = async (req, res) => {
        FROM orders o
        LEFT JOIN order_items oi ON o.id = oi.order_id
        LEFT JOIN menu_items mi ON oi.menu_item_id = mi.id
-       WHERE DATE(o.created_at) = CURRENT_DATE
+       WHERE DATE(o.created_at) = CURRENT_DATE AND o.status != 'CANCELLED'
        GROUP BY o.id, o.order_number, o.customer_name, o.total, o.created_at
        ORDER BY o.created_at DESC
        LIMIT 5`
@@ -88,7 +85,7 @@ const getDashboardStats = async (req, res) => {
         trends: {
           orders: `${ordersTrend >= 0 ? '+' : ''}${ordersTrend}%`,
           revenue: `${revenueTrend >= 0 ? '+' : ''}${revenueTrend}%`,
-          customers: `${customersTrend >= 0 ? '+' : ''}${customersTrend}`
+          customers: `${customersTrend >= 0 ? '+' : ''}${customersTrend}%`
         },
         recentOrders: recentOrdersResult.rows.map(order => ({
           id: order.order_number,

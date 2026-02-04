@@ -559,10 +559,10 @@ const getOrderStatusHistory = async (orderId) => {
  * @returns {Promise<Object>} Order statistics
  */
 const getStats = async ({ startDate, endDate } = {}) => {
-  const conditions = [];
+  const conditions = ["status != 'CANCELLED'"];
   const values = [];
   let paramIndex = 1;
-  
+
   if (startDate) {
     conditions.push(`DATE(created_at) >= $${paramIndex}`);
     values.push(startDate);

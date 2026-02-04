@@ -12,6 +12,7 @@ import {
   ArrowRight,
   RefreshCw,
   Crown,
+  CalendarDays,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -44,7 +45,7 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, description, icon, tr
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const { stats, weeklyTopCustomers, loading, error, refreshAll } = useDashboard();
+  const { stats, weeklyAnalytics, weeklyTopCustomers, loading, error, refreshAll } = useDashboard();
 
   if (loading) {
     return (
@@ -164,6 +165,36 @@ export default function DashboardPage() {
           trend={stats?.trends.customers}
         />
       </div>
+
+      {/* Weekly Stats */}
+      {weeklyAnalytics && (
+        <div>
+          <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+            <CalendarDays className="h-5 w-5" />
+            This Week
+          </h2>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <StatCard
+              title="Week's Orders"
+              value={weeklyAnalytics.totalOrders.toString()}
+              description="orders this week"
+              icon={<ShoppingCart className="h-full w-full" />}
+            />
+            <StatCard
+              title="Week's Revenue"
+              value={`₹${weeklyAnalytics.totalRevenue.toFixed(0)}`}
+              description="total revenue"
+              icon={<DollarSign className="h-full w-full" />}
+            />
+            <StatCard
+              title="Week's Avg Order"
+              value={`₹${weeklyAnalytics.averageOrderValue.toFixed(0)}`}
+              description="per transaction"
+              icon={<TrendingUp className="h-full w-full" />}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Quick Actions */}
       <div className="grid gap-4 md:grid-cols-3">
