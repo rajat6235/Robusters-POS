@@ -16,7 +16,8 @@ export function CancellationRequestsList() {
 
   useEffect(() => {
     loadCancellationRequests();
-  }, [loadCancellationRequests]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleReviewRequest = (request: CancellationRequest) => {
     setSelectedRequest(request);

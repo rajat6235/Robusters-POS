@@ -97,7 +97,8 @@ export const useDashboard = (): UseDashboardReturn => {
 
   useEffect(() => {
     refreshAll();
-  }, [refreshAll]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return {
     stats,

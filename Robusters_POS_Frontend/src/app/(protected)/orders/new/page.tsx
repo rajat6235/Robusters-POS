@@ -441,10 +441,11 @@ export default function OrdersPage() {
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
   const [editingPriceValue, setEditingPriceValue] = useState('');
 
-  // Load menu data on mount
+  // Load menu data on mount (skip if already cached in store)
   useEffect(() => {
-    loadMenu();
-  }, [loadMenu]);
+    if (categories.length === 0) loadMenu();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Note: No longer auto-selecting first category since we show all categories
 

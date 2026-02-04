@@ -59,12 +59,14 @@ export default function CustomersPage() {
   // Load customers from API whenever search or sort changes
   useEffect(() => {
     loadCustomers(1, 20, debouncedSearch, sortBy);
-  }, [loadCustomers, debouncedSearch, sortBy]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, sortBy]);
 
   // Load settings
   useEffect(() => {
     fetchPublicSettings();
-  }, [fetchPublicSettings]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Clear error when component unmounts
   useEffect(() => {

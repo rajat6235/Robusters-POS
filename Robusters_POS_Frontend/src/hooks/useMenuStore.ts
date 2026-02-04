@@ -166,6 +166,7 @@ export const useMenuStore = create<MenuStore>()(
 
       // ---- Menu loading ----
       loadMenu: async () => {
+        if (get().isLoading) return;
         set({ isLoading: true, error: null });
         try {
           const response = await menuService.getPublicMenu();
@@ -177,6 +178,7 @@ export const useMenuStore = create<MenuStore>()(
       },
 
       loadAddons: async () => {
+        if (get().isLoading) return;
         set({ isLoading: true, error: null });
         try {
           const raw = await adminMenuService.getAddons();

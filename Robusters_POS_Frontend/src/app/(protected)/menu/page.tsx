@@ -592,8 +592,9 @@ function AddonsTab() {
   const [addonUnit, setAddonUnit] = useState('');
 
   useEffect(() => {
-    loadAddons();
-  }, [loadAddons]);
+    if (addons.length === 0) loadAddons();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const resetForm = () => {
     setAddonName('');
@@ -950,8 +951,9 @@ function MenuManagementContent() {
   const { isLoading, error, loadMenu, categories } = useMenuStore();
 
   useEffect(() => {
-    loadMenu();
-  }, [loadMenu]);
+    if (categories.length === 0) loadMenu();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (isLoading && (!categories || categories.length === 0)) {
     return (
