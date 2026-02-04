@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useOrderStore } from '@/hooks/useOrderStore';
 import { useLocationStore } from '@/hooks/useLocationStore';
@@ -36,6 +36,7 @@ import {
   MapPin,
   XCircle,
   AlertTriangle,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -61,16 +62,19 @@ export default function OrdersPage() {
   const router = useRouter();
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
-  
-  const { orders, isLoading, error, loadOrders } = useOrderStore();
-  const { locations, fetchLocations } = useLocationStore();
-  
+
+  const { orders, pagination, isLoading, isLoadingMore, hasMore, error, loadOrders, loadMoreOrders } = useOrderStore();
+  const { locations } = useLocationStore();
+
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('all');
   const [branchFilter, setBranchFilter] = useState('all');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
   const [cancelOrderNumber, setCancelOrderNumber] = useState<string>('');
+
+  // Infinite scroll sentinel ref
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   const handleCancelOrder = (orderId: string, orderNumber: string) => {
     setCancelOrderId(orderId);
@@ -82,11 +86,36 @@ export default function OrdersPage() {
     setCancelOrderNumber('');
   };
 
-  // Load orders and locations on mount
+  // Load orders on mount (locations are already fetched by AppLayout)
   useEffect(() => {
     loadOrders();
-    fetchLocations();
-  }, [loadOrders, fetchLocations]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Whether any client-side filters are active
+  const hasActiveFilters = searchQuery || dateFilter !== 'all' || branchFilter !== 'all';
+
+  // Infinite scroll: observe sentinel element
+  const handleObserver = useCallback((entries: IntersectionObserverEntry[]) => {
+    const [entry] = entries;
+    if (entry.isIntersecting && hasMore && !isLoadingMore && !hasActiveFilters) {
+      loadMoreOrders();
+    }
+  }, [hasMore, isLoadingMore, hasActiveFilters, loadMoreOrders]);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(handleObserver, {
+      root: null,
+      rootMargin: '200px',
+      threshold: 0,
+    });
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [handleObserver]);
 
   // Filter orders based on search and filters
   const filteredOrders = orders.filter(order => {
@@ -94,8 +123,8 @@ export default function OrdersPage() {
     const orderNumber = order.orderNumber || order.order_number || '';
     const customerName = order.customerName || order.customer_name || '';
     const customerPhone = order.customerPhone || order.customer_phone || '';
-    
-    const matchesSearch = !searchQuery || 
+
+    const matchesSearch = !searchQuery ||
       orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
       customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       customerPhone.includes(searchQuery);
@@ -127,21 +156,21 @@ export default function OrdersPage() {
 
   const formatDate = (dateString: string) => {
     if (!dateString) return 'Invalid Date';
-    
+
     const date = new Date(dateString);
     if (isNaN(date.getTime())) return 'Invalid Date';
-    
+
     const today = new Date();
     const isToday = date.toDateString() === today.toDateString();
-    
+
     if (isToday) {
-      return date.toLocaleTimeString('en-IN', { 
-        hour: '2-digit', 
+      return date.toLocaleTimeString('en-IN', {
+        hour: '2-digit',
         minute: '2-digit',
-        hour12: true 
+        hour12: true
       });
     }
-    
+
     return date.toLocaleDateString('en-IN', {
       day: '2-digit',
       month: 'short',
@@ -150,6 +179,9 @@ export default function OrdersPage() {
       hour12: true
     });
   };
+
+  // Use server total when no client-side filters are applied, otherwise use filtered count
+  const displayOrderCount = hasActiveFilters ? filteredOrders.length : (pagination?.total ?? filteredOrders.length);
 
   const renderOrdersContent = () => {
     return (
@@ -164,12 +196,12 @@ export default function OrdersPage() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Total Orders</p>
-                  <p className="text-xl font-bold">{filteredOrders.length}</p>
+                  <p className="text-xl font-bold">{displayOrderCount}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-2">
@@ -271,6 +303,11 @@ export default function OrdersPage() {
           </Card>
         ) : (
           <div className="grid gap-3 sm:gap-4">
+            {pagination && pagination.total > orders.length && !hasActiveFilters && (
+              <p className="text-sm text-muted-foreground text-center">
+                Showing {orders.length} of {pagination.total} orders
+              </p>
+            )}
             {filteredOrders.map((order) => {
               // Handle both camelCase and snake_case field names
               const orderNumber = order.orderNumber || order.order_number || 'N/A';
@@ -285,7 +322,7 @@ export default function OrdersPage() {
               const createdByName = [order.first_name, order.last_name].filter(Boolean).join(' ') || null;
               const status = order.status || 'CONFIRMED';
               const hasCancellationRequest = order.cancellation_requested_by && status === 'CONFIRMED';
-              
+
               return (
                 <Card key={order.id} className="hover:shadow-lg hover:border-accent-foreground/20 transition-all duration-200">
                   <CardContent className="p-3 sm:p-4">
@@ -366,7 +403,7 @@ export default function OrdersPage() {
                                       </span>
                                     </div>
                                   </div>
-                                  
+
                                   {/* Variants and Unit Price */}
                                   <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                                     {item.variants && Array.isArray(item.variants) && item.variants.length > 0 && (
@@ -378,14 +415,14 @@ export default function OrdersPage() {
                                       Unit Price: ₹{safeParseFloat(item.unit_price || item.unitPrice).toFixed(0)}
                                     </span>
                                   </div>
-                                  
+
                                   {/* Addons */}
                                   {item.addons && Array.isArray(item.addons) && item.addons.length > 0 && (
                                     <div className="text-xs text-muted-foreground mt-1">
                                       Add-ons: {item.addons.map((a: any) => a.name).join(', ')}
                                     </div>
                                   )}
-                                  
+
                                   {/* Special Instructions */}
                                   {(item.special_instructions || item.specialInstructions) && (
                                     <div className="text-xs text-muted-foreground mt-1 italic">
@@ -424,7 +461,7 @@ export default function OrdersPage() {
                             <Eye className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
                             View Details
                           </Button>
-                          
+
                           {status === 'CONFIRMED' && !hasCancellationRequest && (
                             <Button
                               variant="outline"
@@ -443,6 +480,21 @@ export default function OrdersPage() {
                 </Card>
               );
             })}
+
+            {/* Infinite scroll sentinel + loading indicator */}
+            {!hasActiveFilters && (
+              <div ref={sentinelRef} className="flex justify-center py-4">
+                {isLoadingMore && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading more orders...
+                  </div>
+                )}
+                {!hasMore && orders.length > 0 && pagination && pagination.total > 20 && (
+                  <p className="text-sm text-muted-foreground">All {pagination.total} orders loaded</p>
+                )}
+              </div>
+            )}
           </div>
         )}
       </>
@@ -529,7 +581,7 @@ export default function OrdersPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button 
+          <Button
             variant="outline"
             onClick={() => loadOrders()}
             disabled={isLoading}
@@ -537,7 +589,7 @@ export default function OrdersPage() {
             <RefreshCw className={cn("h-4 w-4 mr-2", isLoading && "animate-spin")} />
             Refresh
           </Button>
-          <Button 
+          <Button
             onClick={() => router.push('/orders/new')}
             className="w-full sm:w-auto"
           >
@@ -557,11 +609,11 @@ export default function OrdersPage() {
               Cancellation Requests
             </TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="orders" className="space-y-6">
             {renderOrdersContent()}
           </TabsContent>
-          
+
           <TabsContent value="cancellations" className="space-y-6">
             <CancellationRequestsList />
           </TabsContent>
@@ -614,7 +666,7 @@ export default function OrdersPage() {
               </div>
 
               {/* Customer Info */}
-              {((selectedOrder.customerName || selectedOrder.customer_name) || 
+              {((selectedOrder.customerName || selectedOrder.customer_name) ||
                 (selectedOrder.customerPhone || selectedOrder.customer_phone)) && (
                 <div>
                   <h4 className="font-medium mb-2">Customer</h4>
@@ -650,14 +702,14 @@ export default function OrdersPage() {
                           <span className="text-xs sm:text-sm">Qty: {item.quantity || 1}</span>
                           <p className="font-medium text-sm sm:text-base">
                             ₹{safeParseFloat(
-                              item.total_price || 
-                              item.totalPrice || 
+                              item.total_price ||
+                              item.totalPrice ||
                               (safeParseFloat(item.unit_price || item.unitPrice) * (item.quantity || 1))
                             ).toFixed(2)}
                           </p>
                         </div>
                       </div>
-                      
+
                       {/* Variants */}
                       {item.variants && Array.isArray(item.variants) && item.variants.length > 0 && (
                         <div className="text-xs sm:text-sm text-muted-foreground">
@@ -670,7 +722,7 @@ export default function OrdersPage() {
                           ))}
                         </div>
                       )}
-                      
+
                       {/* Addons */}
                       {item.addons && Array.isArray(item.addons) && item.addons.length > 0 && (
                         <div className="text-xs sm:text-sm text-muted-foreground">
@@ -683,7 +735,7 @@ export default function OrdersPage() {
                           ))}
                         </div>
                       )}
-                      
+
                       {/* Special Instructions */}
                       {(item.specialInstructions || item.special_instructions) && (
                         <div className="text-xs sm:text-sm text-muted-foreground">
@@ -691,7 +743,7 @@ export default function OrdersPage() {
                           <span className="italic">{item.specialInstructions || item.special_instructions}</span>
                         </div>
                       )}
-                      
+
                       {/* Unit Price */}
                       <div className="text-xs text-muted-foreground">
                         Unit Price: ₹{safeParseFloat(item.unit_price || item.unitPrice).toFixed(2)}

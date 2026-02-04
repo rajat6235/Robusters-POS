@@ -60,7 +60,8 @@ function LocationSelector() {
 
   useEffect(() => {
     fetchLocations();
-  }, [fetchLocations]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const activeLocations = locations.filter(l => l.is_active);
 

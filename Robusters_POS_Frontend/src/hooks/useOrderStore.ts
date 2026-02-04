@@ -26,14 +26,24 @@ export function calcItemUnitPrice(item: CartItem): number {
   return item.menuItem.basePrice + variantTotal + addonTotal;
 }
 
+interface OrderPagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
 interface OrderStore {
   cart: CartItem[];
   orders: Order[];
+  pagination: OrderPagination | null;
   cancellationRequests: CancellationRequest[];
   customerPhone: string;
   customerName: string;
   customerId: string | null;
   isLoading: boolean;
+  isLoadingMore: boolean;
+  hasMore: boolean;
   error: string | null;
 
   // Cart actions
@@ -54,7 +64,8 @@ interface OrderStore {
 
   // Order actions
   createOrder: (paymentMethod: 'CASH' | 'CARD' | 'UPI' | 'LOYALTY', notes?: string, locationId?: string, priceOverrides?: Record<string, number>) => Promise<Order>;
-  loadOrders: (page?: number, limit?: number) => Promise<void>;
+  loadOrders: () => Promise<void>;
+  loadMoreOrders: () => Promise<void>;
 
   // Cancellation actions
   requestCancellation: (orderId: string, reason: string) => Promise<void>;
@@ -72,11 +83,14 @@ export const useOrderStore = create<OrderStore>()(
     (set, get) => ({
       cart: [],
       orders: [],
+      pagination: null,
       cancellationRequests: [],
       customerPhone: '',
       customerName: '',
       customerId: null,
       isLoading: false,
+      isLoadingMore: false,
+      hasMore: false,
       error: null,
 
       addToCart: (menuItem, selectedVariants, quantity, addonSelections = [], specialInstructions) => {
@@ -156,6 +170,7 @@ export const useOrderStore = create<OrderStore>()(
           if (response.success) {
             set(state => ({
               orders: [response.data.order, ...state.orders],
+              pagination: state.pagination ? { ...state.pagination, total: state.pagination.total + 1 } : null,
               cart: [],
               customerPhone: '',
               customerName: '',
@@ -176,14 +191,16 @@ export const useOrderStore = create<OrderStore>()(
         }
       },
 
-      loadOrders: async (page = 1, limit = 20) => {
+      loadOrders: async () => {
+        if (get().isLoading) return;
         set({ isLoading: true, error: null });
         try {
-          console.log('Loading orders...');
-          const response = await orderService.getOrders(page, limit);
-          console.log('Orders response:', response);
+          const response = await orderService.getOrders(1, 20);
+          const pag = response.data.pagination;
           set({
             orders: response.data.orders || [],
+            pagination: pag || null,
+            hasMore: pag ? pag.page < pag.totalPages : false,
             isLoading: false
           });
         } catch (error: any) {
@@ -192,6 +209,28 @@ export const useOrderStore = create<OrderStore>()(
             error: error.response?.data?.message || error.message || 'Failed to load orders',
             isLoading: false
           });
+        }
+      },
+
+      loadMoreOrders: async () => {
+        const state = get();
+        if (state.isLoadingMore || !state.hasMore || !state.pagination) return;
+
+        const nextPage = state.pagination.page + 1;
+        set({ isLoadingMore: true });
+        try {
+          const response = await orderService.getOrders(nextPage, 20);
+          const pag = response.data.pagination;
+          const newOrders = response.data.orders || [];
+          set(state => ({
+            orders: [...state.orders, ...newOrders],
+            pagination: pag || null,
+            hasMore: pag ? pag.page < pag.totalPages : false,
+            isLoadingMore: false
+          }));
+        } catch (error: any) {
+          console.error('Load more orders error:', error);
+          set({ isLoadingMore: false });
         }
       },
 

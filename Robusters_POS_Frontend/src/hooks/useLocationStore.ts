@@ -24,6 +24,7 @@ export const useLocationStore = create<LocationStore>()(
       error: null,
 
       fetchLocations: async (includeInactive = false) => {
+        if (get().isLoading) return;
         set({ isLoading: true, error: null });
         try {
           const response = await locationService.getLocations(includeInactive);
