@@ -129,7 +129,8 @@ export const orderService = {
     page = 1,
     limit = 20,
     startDate?: string,
-    endDate?: string
+    endDate?: string,
+    search?: string
   ): Promise<OrdersResponse> {
     const params = new URLSearchParams({
       page: page.toString(),
@@ -138,6 +139,7 @@ export const orderService = {
 
     if (startDate) params.append('startDate', startDate);
     if (endDate) params.append('endDate', endDate);
+    if (search) params.append('search', search);
 
     const response = await apiClient.get<OrdersResponse>(`/orders?${params.toString()}`);
     return response.data;

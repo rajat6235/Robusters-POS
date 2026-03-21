@@ -154,6 +154,7 @@ const getOrders = async (req, res, next) => {
       startDate,
       endDate,
       customerPhone,
+      search,
     } = req.query;
 
     const result = await Order.findAllWithItems({
@@ -162,6 +163,7 @@ const getOrders = async (req, res, next) => {
       startDate,
       endDate,
       customerPhone,
+      search,
     });
 
     res.json({

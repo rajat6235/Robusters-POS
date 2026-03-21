@@ -31,6 +31,19 @@ const errorHandler = (err, req, res, next) => {
     code = 'VALIDATION_ERROR';
   }
 
+  // Handle database connection errors (e.g. Render free plan expiry)
+  if (
+    err.message === 'Connection terminated unexpectedly' ||
+    err.message?.includes('Connection terminated') ||
+    err.code === 'ECONNRESET' ||
+    err.code === 'ECONNREFUSED' ||
+    err.code === '57P01' // admin_shutdown (Render kills expired DB)
+  ) {
+    statusCode = 503;
+    code = 'DATABASE_UNAVAILABLE';
+    message = 'Database unavailable. Your Render database plan may have expired — please upgrade to resume service.';
+  }
+
   // Log error (more details in development)
   if (config.env === 'development') {
     console.error('Error:', {

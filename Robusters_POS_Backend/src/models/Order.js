@@ -645,27 +645,37 @@ const findAllWithItems = async ({
   startDate,
   endDate,
   customerPhone,
+  search,
 } = {}) => {
   const offset = (page - 1) * limit;
   const conditions = [];
   const values = [];
   let paramIndex = 1;
-  
+
   if (startDate) {
     conditions.push(`DATE(o.created_at) >= $${paramIndex}`);
     values.push(startDate);
     paramIndex++;
   }
-  
+
   if (endDate) {
     conditions.push(`DATE(o.created_at) <= $${paramIndex}`);
     values.push(endDate);
     paramIndex++;
   }
-  
+
   if (customerPhone) {
     conditions.push(`o.customer_phone ILIKE $${paramIndex}`);
     values.push(`%${customerPhone}%`);
+    paramIndex++;
+  }
+
+  if (search) {
+    const term = `%${search.trim()}%`;
+    conditions.push(
+      `(o.order_number ILIKE $${paramIndex} OR o.customer_phone ILIKE $${paramIndex} OR o.customer_name ILIKE $${paramIndex})`
+    );
+    values.push(term);
     paramIndex++;
   }
   

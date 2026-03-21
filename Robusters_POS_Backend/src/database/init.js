@@ -14,6 +14,7 @@ const { removeTaxCalculation } = require('./migrations/008_remove_tax_calculatio
 const { createLocationsSchema } = require('./migrations/009_locations');
 const { addLoyaltyPayment } = require('./migrations/010_loyalty_payment');
 const { createSettingsSchema } = require('./migrations/011_settings');
+const { up: addSearchIndexes } = require('./migrations/013_search_indexes');
 
 const useSSL = process.env.DB_SSL === 'true';
 const dbName = process.env.DB_NAME || 'robusters_pos';
@@ -121,6 +122,10 @@ async function initDatabase() {
     console.log('Creating settings table...');
     await pool.query(createSettingsSchema);
     console.log('Settings table created successfully.');
+
+    console.log('Adding search trigram indexes...');
+    await addSearchIndexes(pool);
+    console.log('Search trigram indexes added successfully.');
 
     await pool.end();
     console.log('\nDatabase initialization complete!');

@@ -64,8 +64,8 @@ interface OrderStore {
 
   // Order actions
   createOrder: (paymentMethod: 'CASH' | 'CARD' | 'UPI' | 'LOYALTY', notes?: string, locationId?: string, priceOverrides?: Record<string, number>) => Promise<Order>;
-  loadOrders: () => Promise<void>;
-  loadMoreOrders: () => Promise<void>;
+  loadOrders: (search?: string) => Promise<void>;
+  loadMoreOrders: (search?: string) => Promise<void>;
 
   // Cancellation actions
   requestCancellation: (orderId: string, reason: string) => Promise<void>;
@@ -191,11 +191,11 @@ export const useOrderStore = create<OrderStore>()(
         }
       },
 
-      loadOrders: async () => {
+      loadOrders: async (search?: string) => {
         if (get().isLoading) return;
         set({ isLoading: true, error: null });
         try {
-          const response = await orderService.getOrders(1, 20);
+          const response = await orderService.getOrders(1, 20, undefined, undefined, search);
           const pag = response.data.pagination;
           set({
             orders: response.data.orders || [],
@@ -212,14 +212,14 @@ export const useOrderStore = create<OrderStore>()(
         }
       },
 
-      loadMoreOrders: async () => {
+      loadMoreOrders: async (search?: string) => {
         const state = get();
         if (state.isLoadingMore || !state.hasMore || !state.pagination) return;
 
         const nextPage = state.pagination.page + 1;
         set({ isLoadingMore: true });
         try {
-          const response = await orderService.getOrders(nextPage, 20);
+          const response = await orderService.getOrders(nextPage, 20, undefined, undefined, search);
           const pag = response.data.pagination;
           const newOrders = response.data.orders || [];
           set(state => ({

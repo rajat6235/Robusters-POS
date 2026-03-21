@@ -67,6 +67,7 @@ export default function OrdersPage() {
   const { locations } = useLocationStore();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('all');
   const [branchFilter, setBranchFilter] = useState('all');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -75,6 +76,7 @@ export default function OrdersPage() {
 
   // Infinite scroll sentinel ref
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleCancelOrder = (orderId: string, orderNumber: string) => {
     setCancelOrderId(orderId);
@@ -86,22 +88,31 @@ export default function OrdersPage() {
     setCancelOrderNumber('');
   };
 
-  // Load orders on mount (locations are already fetched by AppLayout)
+  // Load orders on mount and whenever debouncedSearch changes
   useEffect(() => {
-    loadOrders();
+    loadOrders(debouncedSearch || undefined);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [debouncedSearch]);
 
-  // Whether any client-side filters are active
-  const hasActiveFilters = searchQuery || dateFilter !== 'all' || branchFilter !== 'all';
+  // Debounce search input → updates debouncedSearch → triggers the effect above
+  useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 200);
+    return () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); };
+  }, [searchQuery]);
+
+  // Whether any client-side filters are active (date/branch are still client-side)
+  const hasActiveFilters = debouncedSearch || dateFilter !== 'all' || branchFilter !== 'all';
 
   // Infinite scroll: observe sentinel element
   const handleObserver = useCallback((entries: IntersectionObserverEntry[]) => {
     const [entry] = entries;
     if (entry.isIntersecting && hasMore && !isLoadingMore && !hasActiveFilters) {
-      loadMoreOrders();
+      loadMoreOrders(debouncedSearch || undefined);
     }
-  }, [hasMore, isLoadingMore, hasActiveFilters, loadMoreOrders]);
+  }, [hasMore, isLoadingMore, hasActiveFilters, loadMoreOrders, debouncedSearch]);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -117,19 +128,9 @@ export default function OrdersPage() {
     return () => observer.disconnect();
   }, [handleObserver]);
 
-  // Filter orders based on search and filters
+  // Client-side filters for date and branch only (search is now server-side)
   const filteredOrders = orders.filter(order => {
-    // Search filter - handle both camelCase and snake_case field names
-    const orderNumber = order.orderNumber || order.order_number || '';
-    const customerName = order.customerName || order.customer_name || '';
-    const customerPhone = order.customerPhone || order.customer_phone || '';
-
-    const matchesSearch = !searchQuery ||
-      orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      customerPhone.includes(searchQuery);
-
-    // Date filter - handle both camelCase and snake_case field names
+    // Date filter
     const createdAt = order.createdAt || order.created_at;
     const orderDate = new Date(createdAt);
     const today = new Date();
@@ -151,7 +152,7 @@ export default function OrdersPage() {
     const orderLocationId = order.locationId || order.location_id || '';
     const matchesBranch = branchFilter === 'all' || orderLocationId === branchFilter;
 
-    return matchesSearch && matchesDate && matchesBranch;
+    return matchesDate && matchesBranch;
   });
 
   const formatDate = (dateString: string) => {
