@@ -719,7 +719,13 @@ const findAllWithItems = async ({
               SELECT COALESCE(json_agg(json_build_object('name', iv.name, 'price', iv.price::float)), '[]')
               FROM item_variants iv
               WHERE iv.id = ANY(
-                ARRAY(SELECT jsonb_array_elements_text(oi.variant_ids)::uuid)
+                ARRAY(
+                  SELECT jsonb_array_elements_text(v)::uuid
+                  FROM (SELECT CASE
+                    WHEN oi.variant_ids IS NULL OR jsonb_typeof(oi.variant_ids) <> 'array' THEN '[]'::jsonb
+                    ELSE oi.variant_ids
+                  END AS v) t
+                )
               )
             ),
             'addons', (
@@ -731,7 +737,12 @@ const findAllWithItems = async ({
               WHERE a.id = ANY(
                 ARRAY(
                   SELECT (sel->>'addonId')::uuid
-                  FROM jsonb_array_elements(oi.addon_selections::jsonb) AS sel
+                  FROM jsonb_array_elements(
+                    CASE
+                      WHEN oi.addon_selections IS NULL OR jsonb_typeof(oi.addon_selections) <> 'array' THEN '[]'::jsonb
+                      ELSE oi.addon_selections
+                    END
+                  ) AS sel
                   WHERE sel->>'addonId' IS NOT NULL
                 )
               )

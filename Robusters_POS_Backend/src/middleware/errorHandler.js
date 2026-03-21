@@ -44,21 +44,12 @@ const errorHandler = (err, req, res, next) => {
     message = 'Database unavailable. Your Render database plan may have expired — please upgrade to resume service.';
   }
 
-  // Log error (more details in development)
+  // Always log the real error server-side (never hidden — needed for debugging production)
   if (config.env === 'development') {
-    console.error('Error:', {
-      message: err.message,
-      stack: err.stack,
-      statusCode,
-    });
+    console.error('Error:', { message: err.message, stack: err.stack, statusCode });
   } else {
-    // In production, only log operational errors briefly
-    if (err.isOperational) {
-      console.error(`[${code}] ${message}`);
-    } else {
-      // Log full error for unexpected errors
-      console.error('Unexpected error:', err);
-    }
+    // In production: always log full error so Render logs show the real cause
+    console.error(`[${code}] ${err.message}`, err.stack || '');
   }
 
   // Don't leak error details in production for non-operational errors
