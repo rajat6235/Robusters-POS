@@ -29,7 +29,7 @@ const config = {
 
   // Bcrypt
   bcrypt: {
-    saltRounds: parseInt(process.env.BCRYPT_SALT_ROUNDS, 10) || 12,
+    saltRounds: parseInt(process.env.BCRYPT_SALT_ROUNDS, 10) || 10,
   },
 };
 

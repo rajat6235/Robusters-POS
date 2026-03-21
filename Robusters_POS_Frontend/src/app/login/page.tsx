@@ -72,15 +72,13 @@ export default function LoginPage() {
 
     try {
       const result = await login({ email, password });
-      
-      if (result.success) {
-        router.push('/dashboard');
-      } else {
+      if (!result.success) {
         setError(result.error || 'Login failed');
+        setIsSubmitting(false);
       }
+      // On success: useEffect watching isAuthenticated handles the redirect
     } catch (error: any) {
       setError(error.message || 'An unexpected error occurred');
-    } finally {
       setIsSubmitting(false);
     }
   };

@@ -47,11 +47,30 @@ export interface UsersResponse {
   };
 }
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const isRetryableError = (err: any): boolean => {
+  // Network errors, timeouts, or 5xx from a cold/stale server — safe to retry
+  if (!err.response) return true; // No response = network/timeout error
+  const status = err.response?.status;
+  return status === 502 || status === 503 || status === 504;
+};
+
 export const authService = {
-  // Login user
-  async login(credentials: LoginCredentials): Promise<LoginResponse> {
-    const response = await apiClient.post<LoginResponse>('/auth/login', credentials);
-    return response.data;
+  // Login user — retries up to 2 times on network/server errors (handles DB cold start)
+  async login(credentials: LoginCredentials, attempt = 1): Promise<LoginResponse> {
+    try {
+      const response = await apiClient.post<LoginResponse>('/auth/login', credentials, {
+        timeout: 15000, // 15s per attempt — enough for DB cold start
+      });
+      return response.data;
+    } catch (err: any) {
+      if (attempt < 3 && isRetryableError(err)) {
+        await sleep(attempt * 500); // 500ms, 1000ms
+        return authService.login(credentials, attempt + 1);
+      }
+      throw err;
+    }
   },
 
   // Get current user profile

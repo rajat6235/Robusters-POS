@@ -30,57 +30,40 @@ const login = async (req, res, next) => {
     const user = await User.findByEmail(email);
 
     if (!user) {
-      // Log failed login attempt
-      await ActivityLog.create({
-        userId: null,
-        action: ActivityLog.ACTIONS.LOGIN_FAILED,
-        details: { email, reason: 'User not found' },
-        ...clientInfo,
-      });
+      ActivityLog.create({ userId: null, action: ActivityLog.ACTIONS.LOGIN_FAILED, details: { email, reason: 'User not found' }, ...clientInfo }).catch(() => {});
       throw new UnauthorizedError('Invalid email or password');
     }
 
-    // Check if user is active
     if (!user.is_active) {
-      await ActivityLog.create({
-        userId: user.id,
-        action: ActivityLog.ACTIONS.LOGIN_FAILED,
-        details: { reason: 'Account deactivated' },
-        ...clientInfo,
-      });
+      ActivityLog.create({ userId: user.id, action: ActivityLog.ACTIONS.LOGIN_FAILED, details: { reason: 'Account deactivated' }, ...clientInfo }).catch(() => {});
       throw new UnauthorizedError('Account is deactivated. Contact administrator.');
     }
 
-    // Verify password
+    // Verify password — run in parallel with nothing (bcrypt is CPU-only, no benefit splitting)
     const isValidPassword = await comparePassword(password, user.password_hash);
 
     if (!isValidPassword) {
-      await ActivityLog.create({
-        userId: user.id,
-        action: ActivityLog.ACTIONS.LOGIN_FAILED,
-        details: { reason: 'Invalid password' },
-        ...clientInfo,
-      });
+      ActivityLog.create({ userId: user.id, action: ActivityLog.ACTIONS.LOGIN_FAILED, details: { reason: 'Invalid password' }, ...clientInfo }).catch(() => {});
       throw new UnauthorizedError('Invalid email or password');
     }
 
-    // Update last login
-    await User.updateLastLogin(user.id);
-
-    // Log successful login
-    await ActivityLog.create({
-      userId: user.id,
-      action: ActivityLog.ACTIONS.LOGIN,
-      details: { email: user.email },
-      ...clientInfo,
-    });
-
-    // Generate token
+    // Generate token (no need to wait for DB writes first)
     const token = generateToken({
       id: user.id,
       email: user.email,
       role: user.role,
     });
+
+    // Fire DB writes in parallel, don't block the response
+    Promise.all([
+      User.updateLastLogin(user.id),
+      ActivityLog.create({
+        userId: user.id,
+        action: ActivityLog.ACTIONS.LOGIN,
+        details: { email: user.email },
+        ...clientInfo,
+      }),
+    ]).catch((err) => console.error('Post-login DB write failed:', err));
 
     res.json({
       success: true,
