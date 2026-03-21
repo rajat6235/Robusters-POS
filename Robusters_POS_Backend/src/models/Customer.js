@@ -131,10 +131,8 @@ class Customer {
     const offset = (page - 1) * limit;
 
     let query = `
-      SELECT c.*, cp.dietary_restrictions, cp.allergies, cp.favorite_items,
-             cp.preferred_payment_method, cp.notes as preference_notes
+      SELECT c.*
       FROM customers c
-      LEFT JOIN customer_preferences cp ON c.id = cp.customer_id
       WHERE c.is_active = true
     `;
 
@@ -155,21 +153,23 @@ class Customer {
     };
     const orderClause = sortMap[sortBy] || 'c.updated_at DESC';
 
-    query += ` ORDER BY ${orderClause} LIMIT $${values.length + 1} OFFSET $${values.length + 2}`;
-    values.push(limit, offset);
-
-    const result = await db.query(query, values);
-
-    // Get total count
-    let countQuery = 'SELECT COUNT(*) FROM customers WHERE is_active = true';
+    // Build count query using same search condition
+    let countQuery = 'SELECT COUNT(*) FROM customers c WHERE c.is_active = true';
     const countValues = [];
-    
     if (search) {
-      countQuery += ` AND (first_name ILIKE $1 OR last_name ILIKE $1 OR phone ILIKE $1 OR email ILIKE $1)`;
+      countQuery += ` AND (c.first_name ILIKE $1 OR c.last_name ILIKE $1 OR c.phone ILIKE $1 OR c.email ILIKE $1)`;
       countValues.push(`%${search}%`);
     }
 
-    const countResult = await db.query(countQuery, countValues);
+    query += ` ORDER BY ${orderClause} LIMIT $${values.length + 1} OFFSET $${values.length + 2}`;
+    values.push(limit, offset);
+
+    // Run data and count queries in parallel
+    const [result, countResult] = await Promise.all([
+      db.query(query, values),
+      db.query(countQuery, countValues),
+    ]);
+
     const total = parseInt(countResult.rows[0].count);
 
     return {

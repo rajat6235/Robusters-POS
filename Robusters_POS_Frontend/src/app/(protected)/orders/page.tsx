@@ -95,8 +95,10 @@ export default function OrdersPage() {
   }, [debouncedSearch]);
 
   // Debounce search input → updates debouncedSearch → triggers the effect above
+  // Only fires API if query is empty (clear) or at least 2 characters
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    if (searchQuery.length === 1) return; // Don't search on single character
     searchDebounceRef.current = setTimeout(() => {
       setDebouncedSearch(searchQuery);
     }, 200);

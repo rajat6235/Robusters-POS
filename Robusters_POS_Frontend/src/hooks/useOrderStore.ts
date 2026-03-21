@@ -6,6 +6,9 @@ import { MenuItem, Variant, Addon } from '@/types/menu';
 import { orderService, CreateOrderRequest, Order, CancellationRequest, StatusHistoryEntry } from '@/services/orderService';
 import { toast } from 'sonner';
 
+// Cancels the previous in-flight search request when a new one starts
+let searchAbortController: AbortController | null = null;
+
 export interface CartItem {
   id: string;
   menuItem: MenuItem;
@@ -192,10 +195,15 @@ export const useOrderStore = create<OrderStore>()(
       },
 
       loadOrders: async (search?: string) => {
-        if (get().isLoading) return;
+        // Cancel any previous in-flight search request
+        if (searchAbortController) searchAbortController.abort();
+        searchAbortController = new AbortController();
+        const signal = searchAbortController.signal;
+
         set({ isLoading: true, error: null });
         try {
-          const response = await orderService.getOrders(1, 20, undefined, undefined, search);
+          const response = await orderService.getOrders(1, 20, undefined, undefined, search, signal);
+          if (signal.aborted) return; // Response arrived after a newer request — discard it
           const pag = response.data.pagination;
           set({
             orders: response.data.orders || [],
@@ -204,6 +212,7 @@ export const useOrderStore = create<OrderStore>()(
             isLoading: false
           });
         } catch (error: any) {
+          if (error.name === 'CanceledError' || error.name === 'AbortError') return; // Expected — ignore
           console.error('Load orders error:', error);
           set({
             error: error.response?.data?.message || error.message || 'Failed to load orders',

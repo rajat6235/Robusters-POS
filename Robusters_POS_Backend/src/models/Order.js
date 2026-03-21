@@ -680,120 +680,96 @@ const findAllWithItems = async ({
   }
   
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-  
-  // Get total count
-  const countResult = await db.query(
-    `SELECT COUNT(*) as total FROM orders o ${whereClause}`,
-    values
-  );
-  
-  const total = parseInt(countResult.rows[0].total);
-  const totalPages = Math.ceil(total / limit);
-  
-  // Get orders
-  const ordersResult = await db.query(
-    `SELECT o.*, u.first_name, u.last_name, l.name as location_name
-     FROM orders o
-     LEFT JOIN users u ON u.id = o.created_by
-     LEFT JOIN locations l ON l.id = o.location_id
-     ${whereClause}
-     ORDER BY o.created_at DESC
-     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
-    [...values, limit, offset]
-  );
 
-  // Get detailed items for each order
-  const ordersWithItems = [];
-  
-  for (const order of ordersResult.rows) {
-    // Get order items with menu item details
-    const itemsQuery = `
-      SELECT oi.*, mi.name as item_name, mi.diet_type
+  // Single query: orders + items + variants + addons + total count — one DB round trip
+  // COUNT(*) OVER() gives total count without a separate query
+  // json_agg builds items array inline; subqueries resolve variant/addon names
+  const sql = `
+    WITH paged_orders AS (
+      SELECT
+        o.id, o.order_number, o.customer_phone, o.customer_name,
+        o.subtotal, o.tax, o.total, o.payment_method, o.payment_status,
+        o.notes, o.created_by, o.location_id, o.created_at, o.updated_at,
+        o.status, o.cancellation_requested_by, o.cancellation_requested_at,
+        o.cancellation_reason, o.cancelled_by, o.cancelled_at,
+        u.first_name, u.last_name,
+        l.name AS location_name,
+        COUNT(*) OVER() AS total_count
+      FROM orders o
+      LEFT JOIN users u ON u.id = o.created_by
+      LEFT JOIN locations l ON l.id = o.location_id
+      ${whereClause}
+      ORDER BY o.created_at DESC
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+    ),
+    order_items_agg AS (
+      SELECT
+        oi.order_id,
+        json_agg(
+          json_build_object(
+            'id',                   oi.id,
+            'menu_item_id',         oi.menu_item_id,
+            'item_name',            mi.name,
+            'diet_type',            mi.diet_type,
+            'quantity',             oi.quantity,
+            'unit_price',           oi.unit_price::float,
+            'total_price',          oi.total_price::float,
+            'special_instructions', oi.special_instructions,
+            'variants', (
+              SELECT COALESCE(json_agg(json_build_object('name', iv.name, 'price', iv.price::float)), '[]')
+              FROM item_variants iv
+              WHERE iv.id = ANY(
+                ARRAY(SELECT jsonb_array_elements_text(oi.variant_ids)::uuid)
+              )
+            ),
+            'addons', (
+              SELECT COALESCE(
+                json_agg(json_build_object('name', a.name, 'price', a.price::float)),
+                '[]'
+              )
+              FROM addons a
+              WHERE a.id = ANY(
+                ARRAY(
+                  SELECT (sel->>'addonId')::uuid
+                  FROM jsonb_array_elements(oi.addon_selections::jsonb) AS sel
+                  WHERE sel->>'addonId' IS NOT NULL
+                )
+              )
+            )
+          )
+          ORDER BY oi.created_at
+        ) AS items
       FROM order_items oi
       JOIN menu_items mi ON mi.id = oi.menu_item_id
-      WHERE oi.order_id = $1
-      ORDER BY oi.created_at
-    `;
-    
-    const itemsResult = await db.query(itemsQuery, [order.id]);
-    
-    // Process each item to include variants and addons
-    const processedItems = [];
-    
-    for (const item of itemsResult.rows) {
-      const processedItem = {
-        id: item.id,
-        menu_item_id: item.menu_item_id,
-        item_name: item.item_name,
-        diet_type: item.diet_type,
-        quantity: item.quantity,
-        unit_price: parseFloat(item.unit_price),
-        total_price: parseFloat(item.total_price),
-        special_instructions: item.special_instructions,
-        variants: [],
-        addons: []
-      };
-      
-      try {
-        // Get variants if they exist
-        if (item.variant_ids && Array.isArray(item.variant_ids) && item.variant_ids.length > 0) {
-          const variantsQuery = `
-            SELECT name, price FROM item_variants 
-            WHERE id = ANY($1::uuid[])
-          `;
-          const variantsResult = await db.query(variantsQuery, [item.variant_ids]);
-          
-          processedItem.variants = variantsResult.rows.map(v => ({
-            name: v.name,
-            price: parseFloat(v.price)
-          }));
-        }
-        
-        // Get addons if they exist
-        if (item.addon_selections && Array.isArray(item.addon_selections) && item.addon_selections.length > 0) {
-          const addonIds = item.addon_selections
-            .map(addon => addon.addonId)
-            .filter(id => id && id !== null);
-          
-          if (addonIds.length > 0) {
-            const addonsQuery = `
-              SELECT name, price FROM addons 
-              WHERE id = ANY($1::uuid[])
-            `;
-            const addonsResult = await db.query(addonsQuery, [addonIds]);
-            
-            processedItem.addons = addonsResult.rows.map(a => ({
-              name: a.name,
-              price: parseFloat(a.price)
-            }));
-          }
-        }
-      } catch (variantAddonError) {
-        // Continue with empty variants/addons if there's an error
-      }
-      
-      processedItems.push(processedItem);
-    }
-    
-    const orderWithItems = {
-      ...order,
-      total: parseFloat(order.total),
-      subtotal: parseFloat(order.subtotal || 0),
-      tax: parseFloat(order.tax || 0),
-      items: processedItems
-    };
-    
-    ordersWithItems.push(orderWithItems);
+      WHERE oi.order_id IN (SELECT id FROM paged_orders)
+      GROUP BY oi.order_id
+    )
+    SELECT po.*, COALESCE(oia.items, '[]') AS items
+    FROM paged_orders po
+    LEFT JOIN order_items_agg oia ON oia.order_id = po.id
+    ORDER BY po.created_at DESC
+  `;
+
+  const result = await db.query(sql, [...values, limit, offset]);
+
+  if (result.rows.length === 0) {
+    return { orders: [], pagination: { page, limit, total: 0, totalPages: 0 } };
   }
-  
+
+  const total = parseInt(result.rows[0].total_count);
+  const totalPages = Math.ceil(total / limit);
+
+  const ordersWithItems = result.rows.map(({ total_count, ...order }) => ({
+    ...order,
+    total: parseFloat(order.total),
+    subtotal: parseFloat(order.subtotal || 0),
+    tax: parseFloat(order.tax || 0),
+    items: order.items || [],
+  }));
+
   return {
     orders: ordersWithItems,
-    pagination: {
-      page,
-      limit,
-      total,
-      totalPages,
-    },
+    pagination: { page, limit, total, totalPages },
   };
 };
 

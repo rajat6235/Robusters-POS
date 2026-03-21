@@ -47,9 +47,10 @@ export default function CustomersPage() {
   const [sortBy, setSortBy] = useState<'recent' | 'loyalty' | 'orders' | 'spent'>('recent');
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Debounce search input
+  // Debounce search input — skip single character, not worth a round trip
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (searchQuery.length === 1) return;
     debounceRef.current = setTimeout(() => {
       setDebouncedSearch(searchQuery);
     }, 200);

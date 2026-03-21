@@ -130,7 +130,8 @@ export const orderService = {
     limit = 20,
     startDate?: string,
     endDate?: string,
-    search?: string
+    search?: string,
+    signal?: AbortSignal
   ): Promise<OrdersResponse> {
     const params = new URLSearchParams({
       page: page.toString(),
@@ -141,7 +142,7 @@ export const orderService = {
     if (endDate) params.append('endDate', endDate);
     if (search) params.append('search', search);
 
-    const response = await apiClient.get<OrdersResponse>(`/orders?${params.toString()}`);
+    const response = await apiClient.get<OrdersResponse>(`/orders?${params.toString()}`, { signal });
     return response.data;
   },
 
