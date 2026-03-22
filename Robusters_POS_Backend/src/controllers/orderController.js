@@ -6,7 +6,9 @@
 const Order = require('../models/Order');
 const Customer = require('../models/Customer');
 const MenuItem = require('../models/MenuItem');
-const { calculateItemPrice, calculateOrderTotal } = require('../utils/priceCalculator');
+const ItemVariant = require('../models/ItemVariant');
+const Addon = require('../models/Addon');
+const { calculateItemPriceInMem, calculateOrderTotal } = require('../utils/priceCalculator');
 const { NotFoundError, BadRequestError } = require('../utils/errors');
 
 /**
@@ -37,22 +39,32 @@ const createOrder = async (req, res, next) => {
       customer = customerResult.customer;
     }
 
-    // Calculate order totals
+    // Batch-fetch all menu items, variants, and addons in 3 parallel queries
+    // instead of N+M+K sequential queries (one per item/variant/addon).
+    const allItemIds    = [...new Set(items.map(i => i.itemId))];
+    const allVariantIds = [...new Set(items.flatMap(i => i.variantIds || []))];
+    const allAddonIds   = [...new Set(items.flatMap(i => (i.addonSelections || []).map(s => s.addonId).filter(Boolean)))];
+
+    const [menuItemsMap, variantsMap, addonsMap] = await Promise.all([
+      MenuItem.findByIds(allItemIds),
+      ItemVariant.findByIds(allVariantIds),
+      Addon.findByIds(allAddonIds),
+    ]);
+
+    // Validate all items exist and are available before touching the DB for the order
+    for (const item of items) {
+      const menuItem = menuItemsMap.get(item.itemId);
+      if (!menuItem) throw new NotFoundError(`Menu item ${item.itemId} not found`);
+      if (!menuItem.is_available) throw new BadRequestError(`Menu item ${menuItem.name} is not available`);
+    }
+
+    // Calculate order totals in-memory (zero additional DB queries)
     let subtotal = 0;
     const processedItems = [];
 
     for (const item of items) {
-      // Get menu item details
-      const menuItem = await MenuItem.findById(item.itemId);
-      if (!menuItem) {
-        throw new NotFoundError(`Menu item ${item.itemId} not found`);
-      }
+      const menuItem = menuItemsMap.get(item.itemId);
 
-      if (!menuItem.is_available) {
-        throw new BadRequestError(`Menu item ${menuItem.name} is not available`);
-      }
-
-      // Use custom price if provided, otherwise calculate from DB
       let unitPrice;
       if (item.customUnitPrice !== undefined && item.customUnitPrice !== null) {
         unitPrice = parseFloat(item.customUnitPrice);
@@ -60,10 +72,13 @@ const createOrder = async (req, res, next) => {
           throw new BadRequestError(`Invalid custom price for item ${menuItem.name}`);
         }
       } else {
-        const priceResult = await calculateItemPrice({
+        const priceResult = calculateItemPriceInMem({
           itemId: item.itemId,
           variantIds: item.variantIds || [],
           addonSelections: item.addonSelections || [],
+          menuItemsMap,
+          variantsMap,
+          addonsMap,
         });
         unitPrice = priceResult.totalPrice;
       }

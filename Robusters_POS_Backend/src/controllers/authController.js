@@ -54,16 +54,15 @@ const login = async (req, res, next) => {
       role: user.role,
     });
 
-    // Fire DB writes in parallel, don't block the response
-    Promise.all([
-      User.updateLastLogin(user.id),
-      ActivityLog.create({
-        userId: user.id,
-        action: ActivityLog.ACTIONS.LOGIN,
-        details: { email: user.email },
-        ...clientInfo,
-      }),
-    ]).catch((err) => console.error('Post-login DB write failed:', err));
+    // ActivityLog.create is awaited — login audit trail must not be silently lost.
+    // updateLastLogin is non-critical so it stays fire-and-forget.
+    User.updateLastLogin(user.id).catch((err) => console.error('updateLastLogin failed:', err));
+    await ActivityLog.create({
+      userId: user.id,
+      action: ActivityLog.ACTIONS.LOGIN,
+      details: { email: user.email },
+      ...clientInfo,
+    });
 
     res.json({
       success: true,

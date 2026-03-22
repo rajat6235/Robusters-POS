@@ -22,6 +22,25 @@ const findByMenuItem = async (menuItemId) => {
 };
 
 /**
+ * Find multiple variants by IDs in a single query
+ * @param {string[]} ids - Array of variant UUIDs
+ * @returns {Promise<Map>} Map of id -> variant
+ */
+const findByIds = async (ids) => {
+  if (!ids || ids.length === 0) return new Map();
+  const result = await db.query(
+    `SELECT iv.*, mi.name as item_name, mi.category_id
+     FROM item_variants iv
+     JOIN menu_items mi ON mi.id = iv.menu_item_id
+     WHERE iv.id = ANY($1)`,
+    [ids]
+  );
+  const map = new Map();
+  for (const row of result.rows) map.set(row.id, row);
+  return map;
+};
+
+/**
  * Find variant by ID
  * @param {string} id - Variant UUID
  * @returns {Promise<Object|null>} Variant or null
@@ -254,6 +273,7 @@ const reorder = async (menuItemId, orders) => {
 module.exports = {
   findByMenuItem,
   findById,
+  findByIds,
   create,
   createBulk,
   update,

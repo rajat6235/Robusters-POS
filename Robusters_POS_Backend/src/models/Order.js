@@ -28,18 +28,23 @@ const ORDER_STATUS = {
 };
 
 /**
- * Generate order number
- * Format: ORD-YYYYMMDD-XXXX
+ * Generate order number — Format: ORD-YYYYMMDD-XXXX
+ * Uses an atomic counter table to prevent duplicate order numbers under
+ * concurrent requests (replaces the old COUNT(*)+1 TOCTOU pattern).
  */
-const generateOrderNumber = async () => {
+const generateOrderNumber = async (client) => {
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  
-  // Get count of orders today
-  const result = await db.query(
-    `SELECT COUNT(*) as count FROM orders WHERE DATE(created_at) = CURRENT_DATE`
+
+  // INSERT ... ON CONFLICT DO UPDATE is atomic — no two calls can get the same counter
+  const result = await client.query(
+    `INSERT INTO order_number_counters (date_key, counter)
+     VALUES (CURRENT_DATE, 1)
+     ON CONFLICT (date_key) DO UPDATE
+       SET counter = order_number_counters.counter + 1
+     RETURNING counter`
   );
-  
-  const count = parseInt(result.rows[0].count) + 1;
+
+  const count = result.rows[0].counter;
   return `ORD-${today}-${count.toString().padStart(4, '0')}`;
 };
 
@@ -66,8 +71,8 @@ const create = async ({
   try {
     await client.query('BEGIN');
 
-    // Generate order number
-    const orderNumber = await generateOrderNumber();
+    // Generate order number — uses client so it participates in the same transaction
+    const orderNumber = await generateOrderNumber(client);
 
     // Create order
     const orderResult = await client.query(

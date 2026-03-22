@@ -100,6 +100,25 @@ const findAll = async ({
 };
 
 /**
+ * Find multiple menu items by IDs in a single query
+ * @param {string[]} ids - Array of item UUIDs
+ * @returns {Promise<Map>} Map of id -> item (no variants)
+ */
+const findByIds = async (ids) => {
+  if (!ids || ids.length === 0) return new Map();
+  const result = await db.query(
+    `SELECT mi.*, c.name as category_name, c.slug as category_slug
+     FROM menu_items mi
+     JOIN categories c ON c.id = mi.category_id
+     WHERE mi.id = ANY($1)`,
+    [ids]
+  );
+  const map = new Map();
+  for (const row of result.rows) map.set(row.id, row);
+  return map;
+};
+
+/**
  * Find menu item by ID
  * @param {string} id - Item UUID
  * @param {boolean} includeVariants - Include variants
@@ -378,6 +397,7 @@ module.exports = {
   VARIANT_TYPES,
   findAll,
   findById,
+  findByIds,
   findBySlug,
   create,
   update,

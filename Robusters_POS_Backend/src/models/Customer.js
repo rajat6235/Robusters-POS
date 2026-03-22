@@ -61,23 +61,43 @@ class Customer {
   }
 
   static async findOrCreate(customerData) {
-    const { phone, email, firstName, lastName } = customerData;
-    
-    // Try to find existing customer by phone first, then email
-    let customer = null;
+    const { phone, email, firstName, lastName, dateOfBirth } = customerData;
+
+    // Atomic upsert — eliminates the check-then-create race condition that caused
+    // duplicate key errors when two concurrent requests used the same phone/email.
     if (phone) {
-      customer = await this.findByPhone(phone);
-    }
-    if (!customer && email) {
-      customer = await this.findByEmail(email);
+      const result = await db.query(
+        `INSERT INTO customers (phone, email, first_name, last_name, date_of_birth)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (phone) DO NOTHING
+         RETURNING *`,
+        [phone, email, firstName, lastName, dateOfBirth]
+      );
+      if (result.rows.length > 0) {
+        return { customer: result.rows[0], isNew: true };
+      }
+      // Already existed — fetch the current record
+      const existing = await this.findByPhone(phone);
+      return { customer: existing, isNew: false };
     }
 
-    if (customer) {
-      return { customer, isNew: false };
+    if (email) {
+      const result = await db.query(
+        `INSERT INTO customers (phone, email, first_name, last_name, date_of_birth)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (email) DO NOTHING
+         RETURNING *`,
+        [phone, email, firstName, lastName, dateOfBirth]
+      );
+      if (result.rows.length > 0) {
+        return { customer: result.rows[0], isNew: true };
+      }
+      const existing = await this.findByEmail(email);
+      return { customer: existing, isNew: false };
     }
 
-    // Create new customer
-    customer = await this.create(customerData);
+    // No unique identifier — just create
+    const customer = await this.create(customerData);
     return { customer, isNew: true };
   }
 
@@ -185,133 +205,92 @@ class Customer {
 
   static async getOrderHistory(customerId, page = 1, limit = 10) {
     const offset = (page - 1) * limit;
-    
-    // First get the orders
-    const ordersQuery = `
-      SELECT o.*, co.created_at as order_association_date
-      FROM orders o
-      INNER JOIN customer_orders co ON o.id = co.order_id
-      WHERE co.customer_id = $1
-      ORDER BY o.created_at DESC
-      LIMIT $2 OFFSET $3
+
+    // Single CTE query replaces the old nested loops that made
+    // 1 + N + N*M*2 database calls (orders + items-per-order + variants+addons-per-item).
+    const sql = `
+      WITH paged_orders AS (
+        SELECT o.*, COUNT(*) OVER() AS total_count
+        FROM orders o
+        INNER JOIN customer_orders co ON o.id = co.order_id
+        WHERE co.customer_id = $1
+        ORDER BY o.created_at DESC
+        LIMIT $2 OFFSET $3
+      ),
+      order_items_agg AS (
+        SELECT
+          oi.order_id,
+          json_agg(
+            json_build_object(
+              'id',                   oi.id,
+              'menu_item_id',         oi.menu_item_id,
+              'item_name',            mi.name,
+              'diet_type',            mi.diet_type,
+              'quantity',             oi.quantity,
+              'unit_price',           oi.unit_price::float,
+              'total_price',          oi.total_price::float,
+              'special_instructions', oi.special_instructions,
+              'variants', (
+                SELECT COALESCE(json_agg(json_build_object('name', iv.name, 'price', iv.price::float)), '[]')
+                FROM item_variants iv
+                WHERE iv.id = ANY(
+                  ARRAY(
+                    SELECT jsonb_array_elements_text(v)::uuid
+                    FROM (SELECT CASE
+                      WHEN oi.variant_ids IS NULL OR jsonb_typeof(oi.variant_ids) <> 'array' THEN '[]'::jsonb
+                      ELSE oi.variant_ids
+                    END AS v) t
+                  )
+                )
+              ),
+              'addons', (
+                SELECT COALESCE(json_agg(json_build_object('name', a.name, 'price', a.price::float)), '[]')
+                FROM addons a
+                WHERE a.id = ANY(
+                  ARRAY(
+                    SELECT (sel->>'addonId')::uuid
+                    FROM jsonb_array_elements(
+                      CASE
+                        WHEN oi.addon_selections IS NULL OR jsonb_typeof(oi.addon_selections) <> 'array' THEN '[]'::jsonb
+                        ELSE oi.addon_selections
+                      END
+                    ) AS sel
+                    WHERE sel->>'addonId' IS NOT NULL
+                  )
+                )
+              )
+            )
+            ORDER BY oi.created_at
+          ) AS items
+        FROM order_items oi
+        JOIN menu_items mi ON mi.id = oi.menu_item_id
+        WHERE oi.order_id IN (SELECT id FROM paged_orders)
+        GROUP BY oi.order_id
+      )
+      SELECT po.*, COALESCE(oia.items, '[]') AS items
+      FROM paged_orders po
+      LEFT JOIN order_items_agg oia ON oia.order_id = po.id
+      ORDER BY po.created_at DESC
     `;
 
-    const ordersResult = await db.query(ordersQuery, [customerId, limit, offset]);
+    const result = await db.query(sql, [customerId, limit, offset]);
 
-    // Then get order items for each order
-    const ordersWithItems = [];
-    
-    for (const order of ordersResult.rows) {
-      try {
-        // Get basic order items with menu item names
-        const itemsQuery = `
-          SELECT oi.*, mi.name as item_name, mi.diet_type
-          FROM order_items oi
-          JOIN menu_items mi ON mi.id = oi.menu_item_id
-          WHERE oi.order_id = $1
-          ORDER BY oi.created_at
-        `;
-        
-        const itemsResult = await db.query(itemsQuery, [order.id]);
-        
-        // Process each item
-        const processedItems = [];
-        
-        for (const item of itemsResult.rows) {
-          const processedItem = {
-            id: item.id,
-            menu_item_id: item.menu_item_id,
-            item_name: item.item_name,
-            diet_type: item.diet_type,
-            quantity: item.quantity,
-            unit_price: parseFloat(item.unit_price),
-            total_price: parseFloat(item.total_price),
-            special_instructions: item.special_instructions,
-            variants: [],
-            addons: []
-          };
-          
-          try {
-            // Get variants if they exist
-            if (item.variant_ids && Array.isArray(item.variant_ids) && item.variant_ids.length > 0) {
-              const variantsQuery = `
-                SELECT name, price FROM item_variants 
-                WHERE id = ANY($1::uuid[])
-              `;
-              const variantsResult = await db.query(variantsQuery, [item.variant_ids]);
-              
-              processedItem.variants = variantsResult.rows.map(v => ({
-                name: v.name,
-                price: parseFloat(v.price)
-              }));
-            }
-            
-            // Get addons if they exist
-            if (item.addon_selections && Array.isArray(item.addon_selections) && item.addon_selections.length > 0) {
-              const addonIds = item.addon_selections
-                .map(addon => addon.addonId)
-                .filter(id => id && id !== null);
-              
-              if (addonIds.length > 0) {
-                const addonsQuery = `
-                  SELECT name, price FROM addons 
-                  WHERE id = ANY($1::uuid[])
-                `;
-                const addonsResult = await db.query(addonsQuery, [addonIds]);
-                
-                processedItem.addons = addonsResult.rows.map(a => ({
-                  name: a.name,
-                  price: parseFloat(a.price)
-                }));
-              }
-            }
-          } catch (variantAddonError) {
-            // Continue with empty variants/addons
-          }
-          
-          processedItems.push(processedItem);
-        }
-        
-        const orderWithItems = {
-          ...order,
-          total: parseFloat(order.total),
-          subtotal: parseFloat(order.subtotal || 0),
-          tax: parseFloat(order.tax || 0),
-          items: processedItems
-        };
-        
-        ordersWithItems.push(orderWithItems);
-        
-      } catch (itemsError) {
-        // Add order without items
-        const orderWithoutItems = {
-          ...order,
-          total: parseFloat(order.total),
-          subtotal: parseFloat(order.subtotal || 0),
-          tax: parseFloat(order.tax || 0),
-          items: []
-        };
-        ordersWithItems.push(orderWithoutItems);
-      }
+    if (result.rows.length === 0) {
+      return { orders: [], pagination: { page, limit, total: 0, pages: 0 } };
     }
 
-    // Get total count
-    const countQuery = `
-      SELECT COUNT(*) 
-      FROM customer_orders 
-      WHERE customer_id = $1
-    `;
-    const countResult = await db.query(countQuery, [customerId]);
-    const total = parseInt(countResult.rows[0].count);
+    const total = parseInt(result.rows[0].total_count);
+    const orders = result.rows.map(({ total_count, ...order }) => ({
+      ...order,
+      total:    parseFloat(order.total),
+      subtotal: parseFloat(order.subtotal || 0),
+      tax:      parseFloat(order.tax || 0),
+      items:    order.items || [],
+    }));
 
     return {
-      orders: ordersWithItems,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit)
-      }
+      orders,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     };
   }
 

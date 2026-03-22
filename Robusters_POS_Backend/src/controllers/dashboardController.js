@@ -9,229 +9,240 @@ const db = require('../database/connection');
 
 /**
  * Get dashboard statistics
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
+ * GET /api/dashboard/stats
+ *
+ * Single CTE query replaces the previous 9+ separate queries:
+ *  - today's order stats (3 queries via Order.getStats)
+ *  - yesterday's order stats (3 queries via Order.getStats)
+ *  - new customers today (1 query)
+ *  - new customers yesterday (1 query)
+ *  - recent orders with items (1 query, but GROUP BY ran before LIMIT)
  */
 const getDashboardStats = async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
-    
-    // Get today's order stats
-    const todayStats = await Order.getStats({
-      startDate: today,
-      endDate: today
-    });
-    
-    // Get new customers today
-    const newCustomersResult = await db.query(
-      `SELECT COUNT(*) as count FROM customers 
-       WHERE DATE(created_at) = CURRENT_DATE AND is_active = true`
-    );
-    const newCustomersToday = parseInt(newCustomersResult.rows[0].count);
-    
-    // Get recent orders (last 5)
-    const recentOrdersResult = await db.query(
-      `SELECT o.id, o.order_number, o.customer_name, o.total, o.created_at,
-              STRING_AGG(mi.name, ', ') as items
-       FROM orders o
-       LEFT JOIN order_items oi ON o.id = oi.order_id
-       LEFT JOIN menu_items mi ON oi.menu_item_id = mi.id
-       WHERE DATE(o.created_at) = CURRENT_DATE AND o.status != 'CANCELLED'
-       GROUP BY o.id, o.order_number, o.customer_name, o.total, o.created_at
-       ORDER BY o.created_at DESC
-       LIMIT 5`
-    );
-    
-    // Calculate trends (compare today vs yesterday)
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
-    
-    const yesterdayStats = await Order.getStats({
-      startDate: yesterdayStr,
-      endDate: yesterdayStr
-    });
-    
-    // Calculate percentage changes
-    const ordersTrend = yesterdayStats.totalOrders > 0 
-      ? ((todayStats.totalOrders - yesterdayStats.totalOrders) / yesterdayStats.totalOrders * 100).toFixed(1)
-      : todayStats.totalOrders > 0 ? 100 : 0;
-    
-    const revenueTrend = yesterdayStats.totalRevenue > 0
-      ? ((todayStats.totalRevenue - yesterdayStats.totalRevenue) / yesterdayStats.totalRevenue * 100).toFixed(1)
-      : todayStats.totalRevenue > 0 ? 100 : 0;
-    
-    // Get yesterday's new customers for trend
-    const yesterdayCustomersResult = await db.query(
-      `SELECT COUNT(*) as count FROM customers 
-       WHERE DATE(created_at) = $1 AND is_active = true`,
-      [yesterdayStr]
-    );
-    const yesterdayNewCustomers = parseInt(yesterdayCustomersResult.rows[0].count);
-    
-    const customersTrend = yesterdayNewCustomers > 0
-      ? ((newCustomersToday - yesterdayNewCustomers) / yesterdayNewCustomers * 100).toFixed(1)
-      : newCustomersToday > 0 ? 100 : 0;
+    const result = await db.query(`
+      WITH
+        today_orders AS (
+          SELECT
+            COUNT(*)                                                      AS total_orders,
+            COALESCE(SUM(total), 0)                                       AS total_revenue,
+            COALESCE(AVG(total), 0)                                       AS avg_order_value,
+            COUNT(*) FILTER (WHERE payment_method = 'CASH')               AS cash_count,
+            COUNT(*) FILTER (WHERE payment_method = 'CARD')               AS card_count,
+            COUNT(*) FILTER (WHERE payment_method = 'UPI')                AS upi_count,
+            COUNT(*) FILTER (WHERE payment_method = 'LOYALTY')            AS loyalty_count
+          FROM orders
+          WHERE DATE(created_at) = CURRENT_DATE
+            AND status != 'CANCELLED'
+        ),
+        yesterday_orders AS (
+          SELECT
+            COUNT(*)                AS total_orders,
+            COALESCE(SUM(total), 0) AS total_revenue
+          FROM orders
+          WHERE DATE(created_at) = CURRENT_DATE - 1
+            AND status != 'CANCELLED'
+        ),
+        today_customers AS (
+          SELECT COUNT(*) AS count
+          FROM customers
+          WHERE DATE(created_at) = CURRENT_DATE AND is_active = true
+        ),
+        yesterday_customers AS (
+          SELECT COUNT(*) AS count
+          FROM customers
+          WHERE DATE(created_at) = CURRENT_DATE - 1 AND is_active = true
+        ),
+        -- Get the 5 most recent order IDs first (cheap index scan),
+        -- then join for items — avoids GROUP BY on all today's orders.
+        recent_ids AS (
+          SELECT id, order_number, customer_name, total, created_at
+          FROM orders
+          WHERE DATE(created_at) = CURRENT_DATE AND status != 'CANCELLED'
+          ORDER BY created_at DESC
+          LIMIT 5
+        ),
+        recent_with_items AS (
+          SELECT
+            r.id, r.order_number, r.customer_name, r.total, r.created_at,
+            STRING_AGG(mi.name, ', ' ORDER BY oi.id) AS items
+          FROM recent_ids r
+          LEFT JOIN order_items oi ON oi.order_id = r.id
+          LEFT JOIN menu_items mi  ON mi.id = oi.menu_item_id
+          GROUP BY r.id, r.order_number, r.customer_name, r.total, r.created_at
+        )
+      SELECT
+        row_to_json(t)  AS today,
+        row_to_json(y)  AS yesterday,
+        tc.count        AS today_customers,
+        yc.count        AS yesterday_customers,
+        (SELECT json_agg(rw ORDER BY rw.created_at DESC) FROM recent_with_items rw) AS recent_orders
+      FROM today_orders t, yesterday_orders y, today_customers tc, yesterday_customers yc
+    `);
+
+    const row = result.rows[0];
+    const today     = row.today;
+    const yesterday = row.yesterday;
+
+    const todayOrders    = parseInt(today.total_orders);
+    const todayRevenue   = parseFloat(today.total_revenue);
+    const todayAvgOrder  = parseFloat(today.avg_order_value);
+    const newCustomers   = parseInt(row.today_customers);
+
+    const yOrders    = parseInt(yesterday.total_orders);
+    const yRevenue   = parseFloat(yesterday.total_revenue);
+    const yCustomers = parseInt(row.yesterday_customers);
+
+    const pct = (current, prev) =>
+      prev > 0 ? ((current - prev) / prev * 100).toFixed(1) : (current > 0 ? 100 : 0);
+
+    const ordersTrend    = pct(todayOrders,  yOrders);
+    const revenueTrend   = pct(todayRevenue, yRevenue);
+    const customersTrend = pct(newCustomers, yCustomers);
+
+    const fmt = (n) => (n >= 0 ? `+${n}` : `${n}`);
 
     res.json({
       success: true,
       data: {
         todayStats: {
-          totalOrders: todayStats.totalOrders,
-          totalRevenue: todayStats.totalRevenue,
-          averageOrderValue: todayStats.averageOrderValue,
-          newCustomers: newCustomersToday
+          totalOrders:       todayOrders,
+          totalRevenue:      todayRevenue,
+          averageOrderValue: todayAvgOrder,
+          newCustomers,
         },
         trends: {
-          orders: `${ordersTrend >= 0 ? '+' : ''}${ordersTrend}%`,
-          revenue: `${revenueTrend >= 0 ? '+' : ''}${revenueTrend}%`,
-          customers: `${customersTrend >= 0 ? '+' : ''}${customersTrend}%`
+          orders:    `${fmt(ordersTrend)}%`,
+          revenue:   `${fmt(revenueTrend)}%`,
+          customers: `${fmt(customersTrend)}%`,
         },
-        recentOrders: recentOrdersResult.rows.map(order => ({
-          id: order.order_number,
-          items: order.items || 'No items',
-          total: `₹${parseFloat(order.total).toFixed(0)}`,
-          customerName: order.customer_name,
-          createdAt: order.created_at
+        recentOrders: (row.recent_orders || []).map(o => ({
+          id:           o.order_number,
+          items:        o.items || 'No items',
+          total:        `₹${parseFloat(o.total).toFixed(0)}`,
+          customerName: o.customer_name,
+          createdAt:    o.created_at,
         })),
-        paymentMethodBreakdown: todayStats.paymentMethodBreakdown
-      }
+        paymentMethodBreakdown: {
+          CASH:    parseInt(today.cash_count),
+          CARD:    parseInt(today.card_count),
+          UPI:     parseInt(today.upi_count),
+          LOYALTY: parseInt(today.loyalty_count),
+        },
+      },
     });
   } catch (error) {
     console.error('Dashboard stats error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch dashboard statistics',
-      error: error.message
+      error: error.message,
     });
   }
 };
 
 /**
  * Get weekly analytics
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
+ * GET /api/dashboard/weekly
  */
 const getWeeklyAnalytics = async (req, res) => {
   try {
     const endDate = new Date();
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 7);
-    
+
     const weeklyStats = await Order.getStats({
       startDate: startDate.toISOString().split('T')[0],
-      endDate: endDate.toISOString().split('T')[0]
+      endDate:   endDate.toISOString().split('T')[0],
     });
-    
-    res.json({
-      success: true,
-      data: weeklyStats
-    });
+
+    res.json({ success: true, data: weeklyStats });
   } catch (error) {
     console.error('Weekly analytics error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch weekly analytics',
-      error: error.message
+      error: error.message,
     });
   }
 };
 
 /**
  * Get top customers
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
+ * GET /api/dashboard/top-customers
  */
 const getTopCustomers = async (req, res) => {
   try {
     const { limit = 10 } = req.query;
     const topCustomers = await Customer.getTopCustomers(parseInt(limit));
-    
-    res.json({
-      success: true,
-      data: topCustomers
-    });
+    res.json({ success: true, data: topCustomers });
   } catch (error) {
     console.error('Top customers error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch top customers',
-      error: error.message
+      error: error.message,
     });
   }
 };
 
 /**
  * Get top customers of the week
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
+ * GET /api/dashboard/top-customers-week
  */
 const getTopCustomersOfWeek = async (req, res) => {
   try {
     const { limit = 5 } = req.query;
-    
-    // Calculate date range for this week
+
     const endDate = new Date();
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 7);
-    
     const startDateStr = startDate.toISOString().split('T')[0];
-    const endDateStr = endDate.toISOString().split('T')[0];
-    
-    // Get top customers based on orders this week
-    const topCustomersQuery = `
-      SELECT 
-        c.id,
-        c.first_name,
-        c.last_name,
-        c.phone,
-        c.email,
-        COUNT(o.id) as weekly_orders,
-        COALESCE(SUM(o.total), 0) as weekly_spent,
-        c.total_orders,
-        c.total_spent,
-        c.loyalty_points
-      FROM customers c
-      INNER JOIN customer_orders co ON c.id = co.customer_id
-      INNER JOIN orders o ON co.order_id = o.id
-      WHERE DATE(o.created_at) >= $1 AND DATE(o.created_at) <= $2
-        AND c.is_active = true
-      GROUP BY c.id, c.first_name, c.last_name, c.phone, c.email, c.total_orders, c.total_spent, c.loyalty_points
-      ORDER BY weekly_spent DESC, weekly_orders DESC
-      LIMIT $3
-    `;
-    
-    const result = await db.query(topCustomersQuery, [startDateStr, endDateStr, parseInt(limit)]);
-    
-    const topCustomers = result.rows.map(customer => ({
-      id: customer.id,
-      firstName: customer.first_name,
-      lastName: customer.last_name,
-      phone: customer.phone,
-      email: customer.email,
-      weeklyOrders: parseInt(customer.weekly_orders),
-      weeklySpent: parseFloat(customer.weekly_spent),
-      totalOrders: parseInt(customer.total_orders),
-      totalSpent: parseFloat(customer.total_spent),
-      loyaltyPoints: parseInt(customer.loyalty_points)
-    }));
-    
+    const endDateStr   = endDate.toISOString().split('T')[0];
+
+    const result = await db.query(
+      `SELECT
+         c.id, c.first_name, c.last_name, c.phone, c.email,
+         COUNT(o.id)            AS weekly_orders,
+         COALESCE(SUM(o.total), 0) AS weekly_spent,
+         c.total_orders, c.total_spent, c.loyalty_points
+       FROM customers c
+       INNER JOIN customer_orders co ON c.id = co.customer_id
+       INNER JOIN orders o ON co.order_id = o.id
+       WHERE DATE(o.created_at) >= $1
+         AND DATE(o.created_at) <= $2
+         AND c.is_active = true
+       GROUP BY c.id, c.first_name, c.last_name, c.phone, c.email,
+                c.total_orders, c.total_spent, c.loyalty_points
+       ORDER BY weekly_spent DESC, weekly_orders DESC
+       LIMIT $3`,
+      [startDateStr, endDateStr, parseInt(limit)]
+    );
+
     res.json({
       success: true,
       data: {
-        customers: topCustomers,
-        dateRange: {
-          startDate: startDateStr,
-          endDate: endDateStr
-        }
-      }
+        customers: result.rows.map(c => ({
+          id:           c.id,
+          firstName:    c.first_name,
+          lastName:     c.last_name,
+          phone:        c.phone,
+          email:        c.email,
+          weeklyOrders: parseInt(c.weekly_orders),
+          weeklySpent:  parseFloat(c.weekly_spent),
+          totalOrders:  parseInt(c.total_orders),
+          totalSpent:   parseFloat(c.total_spent),
+          loyaltyPoints: parseInt(c.loyalty_points),
+        })),
+        dateRange: { startDate: startDateStr, endDate: endDateStr },
+      },
     });
   } catch (error) {
     console.error('Top customers of week error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch top customers of the week',
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -240,5 +251,5 @@ module.exports = {
   getDashboardStats,
   getWeeklyAnalytics,
   getTopCustomers,
-  getTopCustomersOfWeek
+  getTopCustomersOfWeek,
 };

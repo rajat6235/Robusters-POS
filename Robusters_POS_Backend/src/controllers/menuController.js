@@ -711,34 +711,130 @@ const calculateOrder = async (req, res, next) => {
 /**
  * Get full menu for display
  * GET /api/menu/public
+ *
+ * Single query replaces the old 1 + 2N pattern (categories + items-per-cat + addons-per-cat).
  */
 const getPublicMenu = async (req, res, next) => {
   try {
-    const categories = await Category.findAllWithItemCounts();
+    const db = require('../database/connection');
 
-    // Get items and addons for each category
-    const menu = await Promise.all(
-      categories.map(async (category) => {
-        const items = await MenuItem.findByCategory(category.id);
-        const categoryAddons = await Addon.findByCategory(category.id);
+    // One query: categories LEFT JOIN items LEFT JOIN category_addons LEFT JOIN addons
+    const result = await db.query(`
+      SELECT
+        c.id              AS cat_id,
+        c.name            AS cat_name,
+        c.description     AS cat_description,
+        c.image_url       AS cat_image_url,
+        c.slug            AS cat_slug,
+        c.display_order   AS cat_display_order,
+        mi.id             AS item_id,
+        mi.name           AS item_name,
+        mi.description    AS item_description,
+        mi.image_url      AS item_image_url,
+        mi.diet_type,
+        mi.base_price,
+        mi.has_variants,
+        mi.variant_type,
+        mi.display_order  AS item_display_order,
+        mi.is_featured,
+        mi.slug           AS item_slug,
+        iv.id             AS var_id,
+        iv.name           AS var_name,
+        iv.label          AS var_label,
+        iv.price          AS var_price,
+        iv.display_order  AS var_display_order,
+        a.id              AS addon_id,
+        a.name            AS addon_name,
+        a.description     AS addon_description,
+        a.addon_group,
+        a.display_order   AS addon_display_order,
+        COALESCE(ca.price_override, a.price) AS addon_price
+      FROM categories c
+      LEFT JOIN menu_items mi
+        ON mi.category_id = c.id AND mi.is_available = true
+      LEFT JOIN item_variants iv
+        ON iv.menu_item_id = mi.id
+      LEFT JOIN category_addons ca
+        ON ca.category_id = c.id AND ca.is_active = true
+      LEFT JOIN addons a
+        ON a.id = ca.addon_id AND a.is_available = true
+      WHERE c.is_active = true
+      ORDER BY c.display_order, mi.display_order, iv.display_order, a.addon_group, a.display_order
+    `);
 
-        // Attach category addons to each item
-        const itemsWithAddons = items.map(item => ({
-          ...item,
-          addons: categoryAddons
-        }));
+    // Reconstruct tree in JS from the flat result set
+    const catMap = new Map();
+    for (const row of result.rows) {
+      if (!catMap.has(row.cat_id)) {
+        catMap.set(row.cat_id, {
+          id: row.cat_id,
+          name: row.cat_name,
+          description: row.cat_description,
+          imageUrl: row.cat_image_url,
+          slug: row.cat_slug,
+          displayOrder: row.cat_display_order,
+          _itemMap: new Map(),
+          _addonSet: new Map(),
+        });
+      }
+      const cat = catMap.get(row.cat_id);
 
-        return {
-          ...category,
-          items: itemsWithAddons,
-        };
-      })
-    );
+      // Collect addon for this category
+      if (row.addon_id && !cat._addonSet.has(row.addon_id)) {
+        cat._addonSet.set(row.addon_id, {
+          id: row.addon_id,
+          name: row.addon_name,
+          description: row.addon_description,
+          addonGroup: row.addon_group,
+          displayOrder: row.addon_display_order,
+          price: parseFloat(row.addon_price),
+        });
+      }
 
-    res.json({
-      success: true,
-      data: { menu },
+      if (!row.item_id) continue;
+      if (!cat._itemMap.has(row.item_id)) {
+        cat._itemMap.set(row.item_id, {
+          id: row.item_id,
+          name: row.item_name,
+          description: row.item_description,
+          imageUrl: row.item_image_url,
+          dietType: row.diet_type,
+          basePrice: parseFloat(row.base_price),
+          hasVariants: row.has_variants,
+          variantType: row.variant_type,
+          displayOrder: row.item_display_order,
+          isFeatured: row.is_featured,
+          slug: row.item_slug,
+          variants: [],
+          _varSet: new Set(),
+        });
+      }
+      const item = cat._itemMap.get(row.item_id);
+
+      // Collect variant for this item
+      if (row.var_id && !item._varSet.has(row.var_id)) {
+        item._varSet.add(row.var_id);
+        item.variants.push({
+          id: row.var_id,
+          name: row.var_name,
+          label: row.var_label,
+          price: parseFloat(row.var_price),
+          displayOrder: row.var_display_order,
+        });
+      }
+    }
+
+    const menu = [...catMap.values()].map(cat => {
+      const addons = [...cat._addonSet.values()];
+      const items = [...cat._itemMap.values()].map(({ _varSet, ...item }) => ({
+        ...item,
+        addons,
+      }));
+      const { _itemMap, _addonSet, ...catData } = cat;
+      return { ...catData, items };
     });
+
+    res.json({ success: true, data: { menu } });
   } catch (error) {
     next(error);
   }

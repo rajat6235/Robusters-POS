@@ -47,6 +47,22 @@ const findAll = async ({ group, availableOnly = true } = {}) => {
 };
 
 /**
+ * Find multiple addons by IDs in a single query
+ * @param {string[]} ids - Array of addon UUIDs
+ * @returns {Promise<Map>} Map of id -> addon
+ */
+const findByIds = async (ids) => {
+  if (!ids || ids.length === 0) return new Map();
+  const result = await db.query(
+    'SELECT * FROM addons WHERE id = ANY($1)',
+    [ids]
+  );
+  const map = new Map();
+  for (const row of result.rows) map.set(row.id, row);
+  return map;
+};
+
+/**
  * Find addon by ID
  * @param {string} id - Addon UUID
  * @returns {Promise<Object|null>} Addon or null
@@ -322,6 +338,7 @@ module.exports = {
   ADDON_GROUPS,
   findAll,
   findById,
+  findByIds,
   findBySlug,
   create,
   update,

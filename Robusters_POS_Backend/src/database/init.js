@@ -15,6 +15,7 @@ const { createLocationsSchema } = require('./migrations/009_locations');
 const { addLoyaltyPayment } = require('./migrations/010_loyalty_payment');
 const { createSettingsSchema } = require('./migrations/011_settings');
 const { up: addSearchIndexes } = require('./migrations/013_search_indexes');
+const { up: addOrderNumberSequence } = require('./migrations/014_order_number_sequence');
 
 const useSSL = process.env.DB_SSL === 'true';
 const dbName = process.env.DB_NAME || 'robusters_pos';
@@ -126,6 +127,10 @@ async function initDatabase() {
     console.log('Adding search trigram indexes...');
     await addSearchIndexes(pool);
     console.log('Search trigram indexes added successfully.');
+
+    console.log('Adding order number sequence table...');
+    await addOrderNumberSequence(pool);
+    console.log('Order number sequence table added successfully.');
 
     await pool.end();
     console.log('\nDatabase initialization complete!');

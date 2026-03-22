@@ -8,7 +8,8 @@
     "db:init": "node src/database/init.js",
     "db:seed": "node src/database/seed.js",
     "db:seed-menu": "node src/database/seedMenu.js",
-    "db:search-indexes": "node src/database/migrations/013_search_indexes.js"
+    "db:search-indexes": "node src/database/migrations/013_search_indexes.js",
+    "db:order-sequence": "node src/database/migrations/014_order_number_sequence.js"
   },
   "keywords": ["pos", "restaurant", "backend"],
   "author": "Robusters",
