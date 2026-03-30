@@ -74,18 +74,22 @@ const DIET_TYPE_FROM_BACKEND: Record<string, DietType> = {
   'EGGETARIAN': 'egg',
 };
 
-// Transform snake_case DB response to camelCase frontend types
+// Transform API response to camelCase frontend types.
+// Handles BOTH snake_case (old /menu/items endpoints) and camelCase
+// (new /menu/public endpoint) so that any API shape works correctly.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function transformVariant(v: any): Variant {
   return {
     id: v.id,
     name: v.name,
     label: v.label,
-    price: Number(v.price),
+    // parseFloat guards against DB strings ("180.00") and already-numeric values
+    price: parseFloat(String(v.price ?? 0)) || 0,
     calories: v.calories,
-    proteinGrams: v.protein_grams,
-    displayOrder: v.display_order ?? 0,
-    isAvailable: v.is_available ?? true,
+    proteinGrams: v.protein_grams ?? v.proteinGrams,
+    // handle both snake_case (old API) and camelCase (new API)
+    displayOrder: v.display_order ?? v.displayOrder ?? 0,
+    isAvailable: v.is_available ?? v.isAvailable ?? true,
   };
 }
 
@@ -95,22 +99,23 @@ function transformItem(item: any, categoryId: string): MenuItem {
     name: item.name,
     slug: item.slug,
     description: item.description,
-    categoryId: item.category_id || categoryId,
-    dietType: DIET_TYPE_FROM_BACKEND[item.diet_type] || 'veg',
-    basePrice: Number(item.base_price ?? item.basePrice ?? 0),
-    hasVariants: item.has_variants ?? false,
-    variantType: item.variant_type,
+    categoryId: item.category_id ?? item.categoryId ?? categoryId,
+    // handle both "VEG" (DB) and "veg" (already-transformed) values
+    dietType: DIET_TYPE_FROM_BACKEND[item.diet_type ?? item.dietType] ?? ((item.dietType as any) || 'veg'),
+    basePrice: parseFloat(String(item.base_price ?? item.basePrice ?? 0)) || 0,
+    hasVariants: item.has_variants ?? item.hasVariants ?? false,
+    variantType: item.variant_type ?? item.variantType,
     calories: item.calories,
-    proteinGrams: item.protein_grams,
-    carbsGrams: item.carbs_grams,
-    fatGrams: item.fat_grams,
-    fiberGrams: item.fiber_grams,
-    isAvailable: item.is_available ?? true,
-    isFeatured: item.is_featured ?? false,
-    imageUrl: item.image_url,
-    displayOrder: item.display_order ?? 0,
+    proteinGrams: item.protein_grams ?? item.proteinGrams,
+    carbsGrams: item.carbs_grams ?? item.carbsGrams,
+    fatGrams: item.fat_grams ?? item.fatGrams,
+    fiberGrams: item.fiber_grams ?? item.fiberGrams,
+    isAvailable: item.is_available ?? item.isAvailable ?? true,
+    isFeatured: item.is_featured ?? item.isFeatured ?? false,
+    imageUrl: item.image_url ?? item.imageUrl,
+    displayOrder: item.display_order ?? item.displayOrder ?? 0,
     variants: (item.variants || []).map(transformVariant),
-    addons: item.addons || [],
+    addons: (item.addons || []).map(transformAddon),
   };
 }
 
@@ -120,9 +125,9 @@ function transformCategory(cat: any): MenuCategory {
     name: cat.name,
     slug: cat.slug,
     description: cat.description,
-    imageUrl: cat.image_url,
-    displayOrder: cat.display_order ?? 0,
-    isActive: cat.is_active ?? true,
+    imageUrl: cat.image_url ?? cat.imageUrl,
+    displayOrder: cat.display_order ?? cat.displayOrder ?? 0,
+    isActive: cat.is_active ?? cat.isActive ?? true,
     items: (cat.items || []).map((item: any) => transformItem(item, cat.id)),
   };
 }
@@ -133,14 +138,14 @@ function transformAddon(a: any): Addon {
     name: a.name,
     slug: a.slug,
     description: a.description,
-    price: Number(a.price),
+    price: parseFloat(String(a.price ?? a.effective_price ?? 0)) || 0,
     unit: a.unit,
-    unitQuantity: a.unit_quantity,
+    unitQuantity: a.unit_quantity ?? a.unitQuantity,
     calories: a.calories,
-    proteinGrams: a.protein_grams,
-    addonGroup: a.addon_group,
-    displayOrder: a.display_order ?? 0,
-    isAvailable: a.is_available ?? true,
+    proteinGrams: a.protein_grams ?? a.proteinGrams,
+    addonGroup: a.addon_group ?? a.addonGroup,
+    displayOrder: a.display_order ?? a.displayOrder ?? 0,
+    isAvailable: a.is_available ?? a.isAvailable ?? true,
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -400,6 +405,7 @@ export const useMenuStore = create<MenuStore>()(
     }),
     {
       name: 'menu-store',
+      version: 2,
       partialize: (state) => ({ categories: state.categories }),
     }
   )

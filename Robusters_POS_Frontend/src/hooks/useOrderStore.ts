@@ -20,13 +20,17 @@ export interface CartItem {
 
 /** Calculate unit price for a cart item (sync, no API call) */
 export function calcItemUnitPrice(item: CartItem): number {
-  const variantTotal = item.selectedVariants.reduce((sum, v) => sum + v.price, 0);
+  const base = parseFloat(String(item.menuItem?.basePrice ?? 0)) || 0;
+  const variantTotal = item.selectedVariants.reduce(
+    (sum, v) => sum + (parseFloat(String(v.price ?? 0)) || 0),
+    0
+  );
   const addonTotal = item.addonSelections.reduce(
-    (sum, s) => sum + s.addon.price * s.quantity,
+    (sum, s) => sum + (parseFloat(String(s.addon.price ?? 0)) || 0) * (s.quantity || 1),
     0
   );
   // For variant items basePrice is 0; variant price IS the item price
-  return item.menuItem.basePrice + variantTotal + addonTotal;
+  return base + variantTotal + addonTotal;
 }
 
 interface OrderPagination {
@@ -322,6 +326,7 @@ export const useOrderStore = create<OrderStore>()(
     }),
     {
       name: 'robusters-order-storage',
+      version: 2,
       partialize: (state) => ({
         cart: state.cart,
         customerPhone: state.customerPhone,
