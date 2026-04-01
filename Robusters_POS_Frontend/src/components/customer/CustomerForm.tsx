@@ -12,13 +12,14 @@ import { Loader2 } from 'lucide-react';
 interface CustomerFormProps {
   onSuccess?: () => void;
   onCancel?: () => void;
+  initialPhone?: string;
 }
 
-export function CustomerForm({ onSuccess, onCancel }: CustomerFormProps) {
+export function CustomerForm({ onSuccess, onCancel, initialPhone }: CustomerFormProps) {
   const { createCustomer, isLoading } = useCustomerStore();
-  
+
   const [formData, setFormData] = useState<CreateCustomerRequest>({
-    phone: '',
+    phone: initialPhone || '',
     email: '',
     firstName: '',
     lastName: '',

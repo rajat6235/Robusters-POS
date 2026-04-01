@@ -391,6 +391,7 @@ function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps)
               <CustomerForm
                 onSuccess={handleCustomerCreated}
                 onCancel={() => setShowAddForm(false)}
+                initialPhone={/^\+?[\d\s\-()]+$/.test(searchQuery.trim()) ? searchQuery.trim() : undefined}
               />
             </CardContent>
           </Card>
