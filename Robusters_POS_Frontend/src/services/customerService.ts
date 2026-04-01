@@ -152,8 +152,8 @@ class CustomerService {
   }
 
   // Search customers by phone or email
-  async searchCustomers(query: string) {
-    const response = await apiClient.get(`/customers/search?query=${encodeURIComponent(query)}`);
+  async searchCustomers(query: string, signal?: AbortSignal) {
+    const response = await apiClient.get(`/customers/search?query=${encodeURIComponent(query)}`, { signal });
     return response.data as { success: boolean; data: CustomerSearchResult };
   }
 

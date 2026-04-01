@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMenuStore } from '@/hooks/useMenuStore';
 import { useOrderStore, calcItemUnitPrice } from '@/hooks/useOrderStore';
@@ -64,50 +64,70 @@ interface CustomerLookupProps {
   onSkip: () => void;
 }
 
+/** Wrap matched portion of `text` with a highlight span */
+function HighlightMatch({ text, query }: { text: string; query: string }) {
+  const q = query.trim();
+  if (!q) return <>{text}</>;
+  const idx = text.toLowerCase().indexOf(q.toLowerCase());
+  if (idx === -1) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="bg-primary/20 text-foreground rounded-sm px-0.5">{text.slice(idx, idx + q.length)}</mark>
+      {text.slice(idx + q.length)}
+    </>
+  );
+}
+
+/**
+ * Normalize a search query before sending to the API.
+ * For phone-like input: strips formatting chars and strips leading 91/0 country prefix
+ * when the result would be a 10-digit Indian mobile number.
+ * For name input: passes through unchanged.
+ */
+function normalizeQuery(raw: string): string {
+  const trimmed = raw.trim();
+  const stripped = trimmed.replace(/[\s\-().+]/g, '');
+  // Looks like a phone number (8–15 digits, optional leading +)
+  if (/^\+?\d{8,15}$/.test(stripped)) {
+    const digits = stripped.replace(/^\+/, '');
+    // Strip +91 / 91 prefix before a 10-digit number
+    return digits.replace(/^91(?=\d{10}$)/, '');
+  }
+  return trimmed;
+}
+
 function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState(false);
   const [results, setResults] = useState<Customer[]>([]);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [loadingOrders, setLoadingOrders] = useState(false);
-  // Mobile: default to numeric keyboard for phone number entry
+  // Keyboard navigation index for the results list (-1 = none focused)
+  const [focusedIdx, setFocusedIdx] = useState(-1);
+  // Mobile: default to numeric keyboard for phone number entry.
+  // On desktop (md and above) the toggle is hidden so default to false → shows "Name or phone number..."
   const [numericKeyboard, setNumericKeyboard] = useState(true);
+  useEffect(() => {
+    if (window.matchMedia('(min-width: 768px)').matches) setNumericKeyboard(false);
+  }, []);
 
-  const handleSearch = async () => {
-    const raw = searchQuery.trim();
-    if (!raw || raw.length < 2) {
-      toast.error('Enter at least 2 characters to search');
-      return;
-    }
-    setSearching(true);
-    setSearched(false);
-    setResults([]);
-    setSelectedCustomer(null);
-    setRecentOrders([]);
-    setShowAddForm(false);
+  // Ref to the in-flight AbortController so we can cancel stale requests
+  const abortRef = useRef<AbortController | null>(null);
+  // Track the last query we actually fired to avoid duplicate calls and cache hits
+  const lastFiredRef = useRef<string>('');
+  // Session-scoped result cache: normalizedQuery → Customer[]
+  const cacheRef = useRef<Map<string, Customer[]>>(new Map());
+  // Refs for result buttons (keyboard navigation)
+  const resultRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
-    try {
-      const response = await customerService.searchCustomers(raw);
-      const customers = response.data.customers || [];
-      setResults(customers);
-      setSearched(true);
-
-      // If only one result, auto-select it
-      if (customers.length === 1) {
-        handleSelectCustomer(customers[0]);
-      }
-    } catch (error: any) {
-      toast.error(error.message || 'Search failed');
-    } finally {
-      setSearching(false);
-    }
-  };
-
-  const handleSelectCustomer = async (customer: Customer) => {
+  const handleSelectCustomer = useCallback(async (customer: Customer) => {
     setSelectedCustomer(customer);
+    setFocusedIdx(-1);
     setLoadingOrders(true);
     try {
       const ordersRes = await customerService.getCustomerOrders(customer.id, 1, 5);
@@ -117,17 +137,138 @@ function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps)
     } finally {
       setLoadingOrders(false);
     }
+  }, []);
+
+  const runSearch = useCallback(async (raw: string) => {
+    const normalized = normalizeQuery(raw);
+    if (!normalized || normalized.length < 3) return;
+
+    // Serve from cache if available — no spinner, no API call
+    if (cacheRef.current.has(normalized)) {
+      const cached = cacheRef.current.get(normalized)!;
+      lastFiredRef.current = normalized;
+      setResults(cached);
+      setSearched(true);
+      setSearching(false);
+      setSearchError(null);
+      setSelectedCustomer(null);
+      setRecentOrders([]);
+      setShowAddForm(false);
+      setFocusedIdx(-1);
+      if (cached.length === 1) handleSelectCustomer(cached[0]);
+      return;
+    }
+
+    // Cancel any in-flight request — signal is now passed to axios so the HTTP
+    // request is actually aborted on slow networks, not just ignored client-side
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    lastFiredRef.current = normalized;
+
+    setSearching(true);
+    setSearchError(null);
+    setSearched(false);
+    setResults([]);
+    setSelectedCustomer(null);
+    setRecentOrders([]);
+    setShowAddForm(false);
+    setFocusedIdx(-1);
+
+    try {
+      const response = await customerService.searchCustomers(normalized, controller.signal);
+      if (controller.signal.aborted) return;
+      const customers = response.data.customers || [];
+      // Store in cache for subsequent identical queries this session
+      cacheRef.current.set(normalized, customers);
+      setResults(customers);
+      setSearched(true);
+      if (customers.length === 1) handleSelectCustomer(customers[0]);
+    } catch (error: any) {
+      if (controller.signal.aborted) return;
+      setSearchError(error.message || 'Search failed');
+      setSearched(true);
+    } finally {
+      if (!controller.signal.aborted) setSearching(false);
+    }
+  }, [handleSelectCustomer]);
+
+  // Debounced auto-search: fires 400ms after the user stops typing
+  useEffect(() => {
+    const normalized = normalizeQuery(searchQuery);
+
+    // Clear results immediately when input is too short
+    if (normalized.length < 3) {
+      abortRef.current?.abort();
+      setSearching(false);
+      setSearched(false);
+      setResults([]);
+      setSearchError(null);
+      setSelectedCustomer(null);
+      setShowAddForm(false);
+      setFocusedIdx(-1);
+      lastFiredRef.current = '';
+      return;
+    }
+
+    // Skip if the normalized form is identical to what already fired
+    if (normalized === lastFiredRef.current) return;
+
+    const timer = setTimeout(() => runSearch(searchQuery), 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery, runSearch]);
+
+  // Cleanup on unmount
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
+
+  // Manual search still available via button / Enter key
+  const handleManualSearch = () => {
+    const raw = searchQuery.trim();
+    if (!raw || raw.length < 3) {
+      toast.error('Enter at least 3 characters to search');
+      return;
+    }
+    runSearch(raw);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleSearch();
+  // Keyboard navigation: ArrowDown from input moves focus into results list
+  const handleInputKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') { handleManualSearch(); return; }
+    if (e.key === 'ArrowDown' && results.length > 0) {
+      e.preventDefault();
+      setFocusedIdx(0);
+      resultRefs.current[0]?.focus();
+    }
+  };
+
+  // Keyboard navigation within the results list
+  const handleResultKeyDown = (e: React.KeyboardEvent, idx: number) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const next = Math.min(idx + 1, results.length - 1);
+      setFocusedIdx(next);
+      resultRefs.current[next]?.focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (idx === 0) {
+        setFocusedIdx(-1);
+        // Return focus to the search input
+        (document.querySelector('input[type="tel"], input[type="text"]') as HTMLInputElement)?.focus();
+      } else {
+        const prev = idx - 1;
+        setFocusedIdx(prev);
+        resultRefs.current[prev]?.focus();
+      }
+    } else if (e.key === 'Escape') {
+      setFocusedIdx(-1);
+      (document.querySelector('input[type="tel"], input[type="text"]') as HTMLInputElement)?.focus();
+    }
   };
 
   const handleCustomerCreated = async () => {
     setShowAddForm(false);
-    if (searchQuery.trim()) {
-      await handleSearch();
-    }
+    const raw = searchQuery.trim();
+    if (raw.length >= 3) await runSearch(raw);
     toast.success('Customer created successfully');
   };
 
@@ -149,13 +290,23 @@ function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps)
               placeholder={numericKeyboard ? 'Phone number...' : 'Name or phone number...'}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={handleKeyDown}
+              onKeyDown={handleInputKeyDown}
               className="h-12 text-lg"
               autoFocus
+              maxLength={50}
               inputMode={numericKeyboard ? 'tel' : 'text'}
               type={numericKeyboard ? 'tel' : 'text'}
+              aria-label="Search customers by name or phone number"
+              aria-busy={searching}
+              aria-autocomplete="list"
+              aria-controls="customer-results"
             />
-            <Button onClick={handleSearch} disabled={searching} className="h-12 px-6">
+            <Button
+              onClick={handleManualSearch}
+              disabled={searching}
+              className="h-12 px-6"
+              aria-label="Search"
+            >
               {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
             </Button>
           </div>
@@ -170,26 +321,50 @@ function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps)
           </button>
         </div>
 
+        {/* ARIA live region — announces result counts to screen readers */}
+        <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+          {searching
+            ? 'Searching…'
+            : searched && !searchError
+              ? results.length === 0
+                ? 'No customers found'
+                : `${results.length} customer${results.length !== 1 ? 's' : ''} found`
+              : ''}
+        </div>
+
         {/* Multiple Results List */}
         {searched && results.length > 1 && !selectedCustomer && (
           <Card>
             <CardContent className="pt-4 space-y-1">
-              <p className="text-sm text-muted-foreground mb-3">{results.length} customers found</p>
-              <div className="space-y-2 max-h-72 overflow-y-auto">
-                {results.map((cust) => (
+              <p className="text-sm text-muted-foreground mb-3" aria-hidden="true">
+                {results.length} customers found
+              </p>
+              <div
+                id="customer-results"
+                role="listbox"
+                aria-label="Search results"
+                className="space-y-2 max-h-72 overflow-y-auto"
+              >
+                {results.map((cust, idx) => (
                   <button
                     key={cust.id}
-                    className="w-full flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors text-left"
+                    ref={(el) => { resultRefs.current[idx] = el; }}
+                    role="option"
+                    aria-selected={focusedIdx === idx}
+                    className="w-full flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors text-left focus:outline-none focus:ring-2 focus:ring-primary"
                     onClick={() => handleSelectCustomer(cust)}
+                    onKeyDown={(e) => handleResultKeyDown(e, idx)}
                   >
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 shrink-0">
                       <User className="h-5 w-5 text-primary" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm truncate">
-                        {cust.first_name} {cust.last_name || ''}
+                        <HighlightMatch text={`${cust.first_name} ${cust.last_name || ''}`.trim()} query={searchQuery} />
                       </p>
-                      <p className="text-xs text-muted-foreground">{cust.phone}</p>
+                      <p className="text-xs text-muted-foreground">
+                        <HighlightMatch text={cust.phone || ''} query={searchQuery} />
+                      </p>
                     </div>
                     <div className="text-right shrink-0">
                       <p className="text-xs text-muted-foreground">{Number(cust.total_orders || 0)} orders</p>
@@ -360,8 +535,21 @@ function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps)
           </Card>
         )}
 
+        {/* Search error */}
+        {searched && searchError && !showAddForm && (
+          <Card className="border-destructive/50">
+            <CardContent className="pt-6 text-center space-y-3">
+              <p className="text-sm text-destructive font-medium">Search failed</p>
+              <p className="text-xs text-muted-foreground">{searchError}</p>
+              <Button variant="outline" size="sm" onClick={() => runSearch(searchQuery.trim())}>
+                Retry
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         {/* No Results */}
-        {searched && results.length === 0 && !showAddForm && (
+        {searched && !searchError && results.length === 0 && !showAddForm && (
           <Card>
             <CardContent className="pt-6 text-center space-y-4">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
