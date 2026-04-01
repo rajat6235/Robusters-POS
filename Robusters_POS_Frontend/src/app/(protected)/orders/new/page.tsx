@@ -671,28 +671,30 @@ export default function OrdersPage() {
     : 0;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden">
-      {/* Customer bar */}
-      <div className="shrink-0 flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2 mx-1 mb-3">
-        {orderCustomer ? (
-          <div className="flex items-center gap-2 min-w-0">
-            <User className="h-4 w-4 text-primary shrink-0" />
-            <span className="text-sm font-medium truncate">
-              {orderCustomer.first_name} {orderCustomer.last_name || ''}
-            </span>
-            <span className="text-xs text-muted-foreground shrink-0">{orderCustomer.phone}</span>
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">Walk-in customer</p>
-        )}
-        <Button variant="ghost" size="sm" className="shrink-0 text-xs h-7" onClick={handleChangeCustomer}>
-          {orderCustomer ? 'Change' : 'Add Customer'}
-        </Button>
-      </div>
+    <div className="lg:flex lg:flex-col lg:h-[calc(100vh-4rem)] lg:overflow-hidden">
+      {/* Sticky header group — on mobile sticks below the 64px app navbar; on desktop normal shrink-0 flow */}
+      <div className="sticky top-16 z-30 bg-background -mx-4 px-4 pt-3 pb-2 border-b space-y-3 lg:static lg:mx-0 lg:px-0 lg:pt-0 lg:pb-0 lg:border-0 lg:space-y-0 lg:shrink-0">
 
-      {/* Search */}
-      <div className="shrink-0 px-1 mb-3">
-        <div className="relative">
+        {/* Customer bar */}
+        <div className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2">
+          {orderCustomer ? (
+            <div className="flex items-center gap-2 min-w-0">
+              <User className="h-4 w-4 text-primary shrink-0" />
+              <span className="text-sm font-medium truncate">
+                {orderCustomer.first_name} {orderCustomer.last_name || ''}
+              </span>
+              <span className="text-xs text-muted-foreground shrink-0">{orderCustomer.phone}</span>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Walk-in customer</p>
+          )}
+          <Button variant="ghost" size="sm" className="shrink-0 text-xs h-7" onClick={handleChangeCustomer}>
+            {orderCustomer ? 'Change' : 'Add Customer'}
+          </Button>
+        </div>
+
+        {/* Search */}
+        <div className="relative lg:px-1 lg:mb-3">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search menu..."
@@ -706,10 +708,9 @@ export default function OrdersPage() {
             </div>
           )}
         </div>
-      </div>
 
-      {/* Category Navigation - Dropdown on mobile, Tabs on larger screens */}
-      <div className="shrink-0 sticky top-0 bg-background/95 backdrop-blur-sm z-20 px-1 py-2 mb-3 border-b">
+        {/* Category Navigation - Dropdown on mobile, Tabs on larger screens */}
+        <div className="lg:shrink-0 lg:sticky lg:top-0 lg:bg-background/95 lg:backdrop-blur-sm lg:z-20 lg:px-1 lg:py-2 lg:mb-3 lg:border-b">
         {/* Mobile: Dropdown Select */}
         <div className="sm:hidden">
           <Select value={selectedCategory || "all"} onValueChange={handleCategorySelect}>
@@ -759,10 +760,13 @@ export default function OrdersPage() {
             </button>
           ))}
         </div>
+        {/* end category nav */}
+      </div>
+      {/* end sticky header group */}
       </div>
 
       {/* Menu Items - All Categories or Search Results */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden px-1 pb-2">
+      <div className="lg:flex-1 lg:overflow-y-auto overflow-x-hidden px-1 pb-28 lg:pb-2">
         {isSearchMode ? (
           /* Search Results View */
           <>
@@ -806,7 +810,7 @@ export default function OrdersPage() {
                 className="scroll-mt-4"
               >
                 {/* Category Header */}
-                <div className="sticky top-0 bg-background/95 backdrop-blur-sm z-10 pb-2 mb-3">
+                <div className="lg:sticky lg:top-0 bg-background/95 backdrop-blur-sm z-10 pb-2 mb-3">
                   <h2 className="text-lg font-bold text-foreground px-1 border-b-2 border-primary pb-1">
                     {category.name}
                   </h2>
@@ -849,7 +853,7 @@ export default function OrdersPage() {
 
       {/* Sticky Cart Bar at bottom */}
       {cart.length > 0 && (
-        <div className="shrink-0 border-t bg-card px-3 py-2 safe-area-inset">
+        <div className="sticky bottom-0 z-20 -mx-4 lg:static lg:mx-0 lg:shrink-0 border-t bg-card px-3 py-2">
           {/* Expandable cart items */}
           {showCart && (
             <div className="max-h-60 overflow-y-auto mb-3 space-y-2 pt-2">
