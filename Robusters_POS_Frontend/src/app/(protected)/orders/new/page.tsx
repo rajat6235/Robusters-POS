@@ -73,6 +73,8 @@ function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps)
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  // Mobile: default to numeric keyboard for phone number entry
+  const [numericKeyboard, setNumericKeyboard] = useState(true);
 
   const handleSearch = async () => {
     const raw = searchQuery.trim();
@@ -141,18 +143,31 @@ function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps)
         </div>
 
         {/* Search Input */}
-        <div className="flex gap-2">
-          <Input
-            placeholder="Name or phone number..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className="h-12 text-lg"
-            autoFocus
-          />
-          <Button onClick={handleSearch} disabled={searching} className="h-12 px-6">
-            {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-          </Button>
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <Input
+              placeholder={numericKeyboard ? 'Phone number...' : 'Name or phone number...'}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className="h-12 text-lg"
+              autoFocus
+              inputMode={numericKeyboard ? 'tel' : 'text'}
+              type={numericKeyboard ? 'tel' : 'text'}
+            />
+            <Button onClick={handleSearch} disabled={searching} className="h-12 px-6">
+              {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+            </Button>
+          </div>
+          {/* Toggle keyboard type — only shown on mobile */}
+          <button
+            type="button"
+            onClick={() => setNumericKeyboard(prev => !prev)}
+            className="md:hidden flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <span className="text-base leading-none">{numericKeyboard ? 'Aa' : '#'}</span>
+            <span>{numericKeyboard ? 'Switch to name search' : 'Switch to phone number'}</span>
+          </button>
         </div>
 
         {/* Multiple Results List */}
