@@ -14,6 +14,11 @@ const { notFound, errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
 
+// Trust the first proxy in front of Express (nginx, load balancer, etc.)
+// This makes req.ip use the X-Forwarded-For header instead of the socket address,
+// which is why the activity log was recording ::1 (loopback) instead of the real IP.
+app.set('trust proxy', 1);
+
 // Security middleware
 // Helmet sets various HTTP headers for security
 app.use(helmet());

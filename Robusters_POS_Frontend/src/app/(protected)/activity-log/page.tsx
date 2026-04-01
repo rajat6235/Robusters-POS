@@ -26,6 +26,23 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 
+/**
+ * Convert a raw IP address to a human-readable label.
+ * Loopback (127.x, ::1) → "localhost"
+ * Private ranges (10.x, 172.16-31.x, 192.168.x) → "Local Network"
+ * Anything else → returned as-is
+ */
+function formatIp(ip: string | null | undefined): string {
+  if (!ip) return '-';
+  if (ip === '::1' || ip.startsWith('127.')) return 'localhost';
+  if (
+    ip.startsWith('192.168.') ||
+    ip.startsWith('10.') ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(ip)
+  ) return 'Local Network';
+  return ip;
+}
+
 const ACTION_LABELS: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   LOGIN: { label: 'Login', variant: 'default' },
   LOGOUT: { label: 'Logout', variant: 'secondary' },
@@ -182,7 +199,7 @@ export default function ActivityLogPage() {
         {log.ipAddress && (
           <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
             <Globe className="h-3 w-3 flex-shrink-0" />
-            <span className="truncate">{log.ipAddress}</span>
+            <span className="truncate">{formatIp(log.ipAddress)}</span>
           </div>
         )}
       </CardContent>
@@ -331,7 +348,7 @@ export default function ActivityLogPage() {
                             {formatDetails(log.details)}
                           </TableCell>
                           <TableCell className="hidden xl:table-cell text-muted-foreground">
-                            {log.ipAddress || '-'}
+                            {formatIp(log.ipAddress)}
                           </TableCell>
                         </TableRow>
                       ))}

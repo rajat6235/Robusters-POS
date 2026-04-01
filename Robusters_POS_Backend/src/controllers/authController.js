@@ -10,12 +10,26 @@ const { generateToken } = require('../utils/jwt');
 const { UnauthorizedError, ConflictError, NotFoundError } = require('../utils/errors');
 
 /**
- * Helper to get client info for activity logging
+ * Helper to get client info for activity logging.
+ * Priority: X-Forwarded-For (first hop) → X-Real-IP → req.ip (set by trust proxy) → socket address.
+ * Strips the IPv6-mapped IPv4 prefix (::ffff:) so "::ffff:1.2.3.4" is stored as "1.2.3.4".
  */
-const getClientInfo = (req) => ({
-  ipAddress: req.ip || req.connection?.remoteAddress || null,
-  userAgent: req.get('User-Agent') || null,
-});
+const getClientInfo = (req) => {
+  const forwarded = req.get('x-forwarded-for');
+  const raw =
+    (forwarded ? forwarded.split(',')[0].trim() : null) ||
+    req.get('x-real-ip') ||
+    req.ip ||
+    req.socket?.remoteAddress ||
+    null;
+  // Normalize IPv6 representations to readable IPv4:
+  //   ::ffff:1.2.3.4  → 1.2.3.4   (IPv6-mapped IPv4)
+  //   ::1             → 127.0.0.1  (IPv6 loopback = localhost)
+  const ipAddress = raw
+    ? raw.replace(/^::ffff:/, '').replace(/^::1$/, '127.0.0.1')
+    : null;
+  return { ipAddress, userAgent: req.get('User-Agent') || null };
+};
 
 /**
  * Login user and return JWT token
