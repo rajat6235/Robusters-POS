@@ -33,19 +33,25 @@ const ORDER_STATUS = {
  * concurrent requests (replaces the old COUNT(*)+1 TOCTOU pattern).
  */
 const generateOrderNumber = async (client) => {
-  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-
-  // INSERT ... ON CONFLICT DO UPDATE is atomic — no two calls can get the same counter
+  // Both the counter key AND the date string come from PostgreSQL's CURRENT_DATE
+  // so they are always in sync regardless of the Node.js process timezone.
+  // Using Node's new Date() for the date part caused duplicates when Node (UTC)
+  // and the DB were on different calendar days due to timezone offset.
   const result = await client.query(
     `INSERT INTO order_number_counters (date_key, counter)
-     VALUES (CURRENT_DATE, 1)
+     VALUES (
+       CURRENT_DATE,
+       -- Seed from the real count of today's orders so that if the counter
+       -- table is new (or reset), we never collide with already-existing numbers.
+       (SELECT COUNT(*) + 1 FROM orders WHERE DATE(created_at) = CURRENT_DATE)
+     )
      ON CONFLICT (date_key) DO UPDATE
        SET counter = order_number_counters.counter + 1
-     RETURNING counter`
+     RETURNING counter, TO_CHAR(date_key, 'YYYYMMDD') AS date_str`
   );
 
-  const count = result.rows[0].counter;
-  return `ORD-${today}-${count.toString().padStart(4, '0')}`;
+  const { counter, date_str } = result.rows[0];
+  return `ORD-${date_str}-${counter.toString().padStart(4, '0')}`;
 };
 
 /**
