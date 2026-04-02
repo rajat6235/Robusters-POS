@@ -174,8 +174,7 @@ class CustomerService {
     return response.data;
   }
 
-  // Deactivate customer
-  async deactivateCustomer(id: string) {
+  async deleteCustomer(id: string) {
     const response = await apiClient.delete(`/customers/${id}`);
     return response.data;
   }

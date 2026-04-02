@@ -2,22 +2,14 @@ const db = require('../database/connection');
 
 class Customer {
   static async create(customerData) {
-    const {
-      phone,
-      email,
-      firstName,
-      lastName,
-      dateOfBirth
-    } = customerData;
+    const { phone, email, firstName, lastName, dateOfBirth } = customerData;
 
-    const query = `
-      INSERT INTO customers (phone, email, first_name, last_name, date_of_birth)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING *
-    `;
-
-    const values = [phone, email, firstName, lastName, dateOfBirth];
-    const result = await db.query(query, values);
+    const result = await db.query(
+      `INSERT INTO customers (phone, email, first_name, last_name, date_of_birth)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [phone, email, firstName, lastName, dateOfBirth]
+    );
     return result.rows[0];
   }
 
@@ -27,7 +19,7 @@ class Customer {
              cp.preferred_payment_method, cp.notes as preference_notes
       FROM customers c
       LEFT JOIN customer_preferences cp ON c.id = cp.customer_id
-      WHERE c.id = $1 AND c.is_active = true
+      WHERE c.id = $1
     `;
     
     const result = await db.query(query, [id]);
@@ -40,7 +32,7 @@ class Customer {
              cp.preferred_payment_method, cp.notes as preference_notes
       FROM customers c
       LEFT JOIN customer_preferences cp ON c.id = cp.customer_id
-      WHERE c.phone = $1 AND c.is_active = true
+      WHERE c.phone = $1
     `;
     
     const result = await db.query(query, [phone]);
@@ -53,7 +45,7 @@ class Customer {
              cp.preferred_payment_method, cp.notes as preference_notes
       FROM customers c
       LEFT JOIN customer_preferences cp ON c.id = cp.customer_id
-      WHERE c.email = $1 AND c.is_active = true
+      WHERE c.email = $1
     `;
     
     const result = await db.query(query, [email]);
@@ -118,7 +110,7 @@ class Customer {
           last_name = COALESCE($5, last_name),
           date_of_birth = COALESCE($6, date_of_birth),
           updated_at = CURRENT_TIMESTAMP
-      WHERE id = $1 AND is_active = true
+      WHERE id = $1
       RETURNING *
     `;
 
@@ -150,11 +142,7 @@ class Customer {
   static async getAll(page = 1, limit = 20, search = '', sortBy = 'recent') {
     const offset = (page - 1) * limit;
 
-    let query = `
-      SELECT c.*
-      FROM customers c
-      WHERE c.is_active = true
-    `;
+    let query = `SELECT c.* FROM customers c WHERE true`;
 
     const values = [];
 
@@ -174,7 +162,7 @@ class Customer {
     const orderClause = sortMap[sortBy] || 'c.updated_at DESC';
 
     // Build count query using same search condition
-    let countQuery = 'SELECT COUNT(*) FROM customers c WHERE c.is_active = true';
+    let countQuery = 'SELECT COUNT(*) FROM customers c WHERE true';
     const countValues = [];
     if (search) {
       countQuery += ` AND (c.first_name ILIKE $1 OR c.last_name ILIKE $1 OR c.phone ILIKE $1 OR c.email ILIKE $1)`;
@@ -306,15 +294,12 @@ class Customer {
     return result.rows[0];
   }
 
-  static async deactivate(id) {
-    const query = `
-      UPDATE customers 
-      SET is_active = false, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $1
-      RETURNING *
-    `;
-
-    const result = await db.query(query, [id]);
+  static async delete(id) {
+    // Hard delete — cascade removes customer_preferences and customer_orders rows automatically.
+    const result = await db.query(
+      `DELETE FROM customers WHERE id = $1 RETURNING *`,
+      [id]
+    );
     return result.rows[0];
   }
 
@@ -391,8 +376,7 @@ class Customer {
              END as relevance
       FROM customers c
       LEFT JOIN customer_preferences cp ON c.id = cp.customer_id
-      WHERE c.is_active = true
-        AND (
+      WHERE (
           c.phone ILIKE $2
           OR c.first_name ILIKE $2
           OR c.last_name ILIKE $2
@@ -436,7 +420,6 @@ class Customer {
              c.total_spent,
              c.loyalty_points
       FROM customers c
-      WHERE c.is_active = true
       ORDER BY c.total_spent DESC
       LIMIT $1
     `;

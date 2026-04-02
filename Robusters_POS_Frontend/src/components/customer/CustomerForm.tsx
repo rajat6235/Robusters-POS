@@ -75,10 +75,17 @@ export function CustomerForm({ onSuccess, onCancel, initialPhone }: CustomerForm
         lastName: formData.lastName || undefined,
         dateOfBirth: formData.dateOfBirth || undefined
       });
-      
+
       onSuccess?.();
     } catch (error: any) {
-      toast.error(error.message || 'Failed to create customer');
+      const message: string = error.response?.data?.message || error.message || 'Failed to create customer';
+      if (message.toLowerCase().includes('phone number already exists')) {
+        setErrors(prev => ({ ...prev, phone: 'This phone number is already registered' }));
+      } else if (message.toLowerCase().includes('email already exists')) {
+        setErrors(prev => ({ ...prev, email: 'This email address is already registered' }));
+      } else {
+        toast.error(message);
+      }
     }
   };
 

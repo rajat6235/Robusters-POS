@@ -24,7 +24,7 @@ import { toast } from 'sonner';
 import {
   ShoppingCart, Plus, Minus, Trash2, Search, Check, Loader2,
   User, ArrowLeft, UserPlus, SkipForward, Receipt,
-  Star, CreditCard, ChevronUp, MapPin, Pencil, X, Gift
+  Star, CreditCard, ChevronUp, MapPin, Pencil, X, Gift, CheckCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -35,7 +35,7 @@ const dietColors: Record<DietType, string> = {
   egg: 'bg-yellow-500',
 };
 
-type OrderStep = 'customer' | 'menu';
+type OrderStep = 'customer' | 'menu' | 'success';
 
 /** Display price for a menu item card (min variant price or basePrice) */
 function itemDisplayPrice(item: MenuItem): number {
@@ -618,6 +618,7 @@ export default function OrdersPage() {
 
   const [step, setStep] = useState<OrderStep>('customer');
   const [orderCustomer, setOrderCustomer] = useState<Customer | null>(null);
+  const [placedOrder, setPlacedOrder] = useState<any>(null);
 
   const [selectedCategory, setSelectedCategory] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -813,25 +814,64 @@ export default function OrdersPage() {
   const handlePlaceOrder = async () => {
     try {
       const overrides = Object.keys(priceOverrides).length > 0 ? priceOverrides : undefined;
-      await createOrder(paymentMethod, orderNotes || undefined, checkoutLocationId || undefined, overrides);
-      toast.success('Order placed successfully!');
+      const order = await createOrder(paymentMethod, orderNotes || undefined, checkoutLocationId || undefined, overrides);
       setShowCheckout(false);
       setShowCart(false);
       setPaymentMethod('CASH');
       setOrderNotes('');
       setCheckoutLocationId(null);
       setPriceOverrides({});
-      setOrderCustomer(null);
-      setStep('customer');
-
-      // Navigate to orders page
-      router.push('/orders');
+      setPlacedOrder(order);
+      setStep('success');
     } catch (error: any) {
       toast.error(error.message || 'Failed to place order');
     }
   };
 
+  const handleStartNewOrder = () => {
+    setPlacedOrder(null);
+    setOrderCustomer(null);
+    clearCustomerInfo();
+    setStep('customer');
+  };
+
   // ─── Customer Step ────────────────────────────────────────────
+
+  // ─── Success Step ─────────────────────────────────────────────
+  if (step === 'success') {
+    return (
+      <div className="flex items-center justify-center min-h-[calc(100vh-8rem)] px-4">
+        <div className="w-full max-w-sm text-center space-y-6">
+          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-green-500/10">
+            <CheckCircle className="h-10 w-10 text-green-500" />
+          </div>
+          <div className="space-y-1">
+            <h1 className="text-2xl font-bold">Order Placed!</h1>
+            {placedOrder?.order_number && (
+              <p className="text-muted-foreground text-sm">
+                Order <span className="font-semibold text-foreground">#{placedOrder.order_number}</span>
+              </p>
+            )}
+            {placedOrder?.total != null && (
+              <p className="text-3xl font-bold text-primary mt-2">
+                ₹{Number(placedOrder.total).toFixed(0)}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col gap-3">
+            <Button className="w-full h-12 text-base" onClick={handleStartNewOrder}>
+              <ShoppingCart className="h-4 w-4 mr-2" />
+              Start New Order
+            </Button>
+            <Button variant="outline" className="w-full" onClick={() => router.push('/orders')}>
+              <Receipt className="h-4 w-4 mr-2" />
+              View All Orders
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (step === 'customer') {
     return (

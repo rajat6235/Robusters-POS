@@ -208,11 +208,11 @@ class CustomerController {
     }
   }
 
-  // Deactivate customer
-  static async deactivateCustomer(req, res, next) {
+  // Delete customer (hard delete)
+  static async deleteCustomer(req, res, next) {
     try {
       const { id } = req.params;
-      const customer = await Customer.deactivate(id);
+      const customer = await Customer.delete(id);
 
       if (!customer) {
         return next(new NotFoundError('Customer not found'));
@@ -221,7 +221,7 @@ class CustomerController {
       res.json({
         success: true,
         data: { customer },
-        message: 'Customer deactivated successfully'
+        message: 'Customer deleted successfully'
       });
     } catch (error) {
       next(error);

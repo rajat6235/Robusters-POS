@@ -33,7 +33,7 @@ export default function CustomersPage() {
     error,
     loadCustomers,
     setSelectedCustomer,
-    deactivateCustomer,
+    deleteCustomer,
     clearError
   } = useCustomerStore();
 
@@ -83,13 +83,13 @@ export default function CustomersPage() {
     setShowProfileDialog(true);
   };
 
-  const handleDeactivateCustomer = async (customer: Customer) => {
-    if (window.confirm(`Are you sure you want to deactivate ${customer.first_name} ${customer.last_name || ''}?`)) {
+  const handleDeleteCustomer = async (customer: Customer) => {
+    if (window.confirm(`Are you sure you want to permanently delete ${customer.first_name} ${customer.last_name || ''}? This cannot be undone.`)) {
       try {
-        await deactivateCustomer(customer.id);
-        toast.success('Customer deactivated successfully');
+        await deleteCustomer(customer.id);
+        toast.success('Customer deleted successfully');
       } catch (error) {
-        toast.error('Failed to deactivate customer');
+        toast.error('Failed to delete customer');
       }
     }
   };
@@ -301,7 +301,7 @@ export default function CustomersPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleDeactivateCustomer(customer)}
+                        onClick={() => handleDeleteCustomer(customer)}
                         className="h-8 w-8 sm:h-9 sm:w-9"
                       >
                         <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 text-destructive" />

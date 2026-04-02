@@ -19,7 +19,7 @@ interface CustomerStore {
   searchCustomers: (query: string) => Promise<Customer | null>;
   findOrCreateCustomer: (data: any) => Promise<{ customer: Customer; isNew: boolean }>;
   updatePreferences: (id: string, preferences: CustomerPreferences) => Promise<void>;
-  deactivateCustomer: (id: string) => Promise<void>;
+  deleteCustomer: (id: string) => Promise<void>;
   getTopCustomers: (limit?: number) => Promise<Customer[]>;
   
   // UI State
@@ -191,10 +191,10 @@ export const useCustomerStore = create<CustomerStore>()(
         }
       },
 
-      deactivateCustomer: async (id: string) => {
+      deleteCustomer: async (id: string) => {
         set({ isLoading: true, error: null });
         try {
-          await customerService.deactivateCustomer(id);
+          await customerService.deleteCustomer(id);
           
           set(state => ({
             customers: state.customers.filter(customer => customer.id !== id),

@@ -83,7 +83,7 @@ router.delete('/:id',
   authenticate,
   adminOnly,
   customerIdValidation,
-  CustomerController.deactivateCustomer
+  CustomerController.deleteCustomer
 );
 
 module.exports = router;
