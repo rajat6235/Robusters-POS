@@ -265,11 +265,15 @@ function CustomerLookupStep({ onCustomerSelected, onSkip }: CustomerLookupProps)
     }
   };
 
-  const handleCustomerCreated = async () => {
+  const handleCustomerCreated = async (newCustomer?: Customer) => {
     setShowAddForm(false);
-    const raw = searchQuery.trim();
-    if (raw.length >= 3) await runSearch(raw);
-    toast.success('Customer created successfully');
+    if (newCustomer) {
+      // Auto-select the newly created customer so the "Start Order" button appears immediately
+      setResults([newCustomer]);
+      setSearched(true);
+      setSearchError(null);
+      await handleSelectCustomer(newCustomer);
+    }
   };
 
   return (

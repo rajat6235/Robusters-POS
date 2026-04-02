@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 
 interface CustomerFormProps {
-  onSuccess?: () => void;
+  onSuccess?: (customer?: any) => void;
   onCancel?: () => void;
   initialPhone?: string;
 }
@@ -69,14 +69,14 @@ export function CustomerForm({ onSuccess, onCancel, initialPhone }: CustomerForm
     }
 
     try {
-      await createCustomer({
+      const newCustomer = await createCustomer({
         ...formData,
         email: formData.email || undefined,
         lastName: formData.lastName || undefined,
         dateOfBirth: formData.dateOfBirth || undefined
       });
 
-      onSuccess?.();
+      onSuccess?.(newCustomer);
     } catch (error: any) {
       const message: string = error.response?.data?.message || error.message || 'Failed to create customer';
       if (message.toLowerCase().includes('phone number already exists')) {
