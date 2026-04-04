@@ -17,7 +17,7 @@ const { NotFoundError, BadRequestError } = require('../utils/errors');
  */
 const createOrder = async (req, res, next) => {
   try {
-    const { customerPhone, customerName, customerEmail, items, paymentMethod, notes, locationId } = req.body;
+    const { customerPhone, customerName, customerEmail, items, paymentMethod, notes, locationId, loyaltyPointsToRedeem: rawLoyaltyPoints } = req.body;
     const createdBy = req.user.id;
 
     if (!items || items.length === 0) {
@@ -102,14 +102,18 @@ const createOrder = async (req, res, next) => {
     const tax = 0;
     const total = subtotal;
 
-    // Validate loyalty payment: customer must exist and have enough points
-    if (paymentMethod === 'LOYALTY') {
+    // Validate partial loyalty redemption
+    const loyaltyPointsToRedeem = Math.floor(Math.max(0, Number(rawLoyaltyPoints) || 0));
+    if (loyaltyPointsToRedeem > 0) {
       if (!customer) {
-        throw new BadRequestError('Loyalty payment requires a linked customer');
+        throw new BadRequestError('Loyalty points redemption requires a linked customer');
       }
-      const loyaltyPoints = parseInt(customer.loyalty_points) || 0;
-      if (loyaltyPoints < total) {
-        throw new BadRequestError(`Insufficient loyalty points. Customer has ${loyaltyPoints} points but order total is ${total}`);
+      const availablePoints = parseInt(customer.loyalty_points) || 0;
+      if (loyaltyPointsToRedeem > availablePoints) {
+        throw new BadRequestError(`Cannot redeem ${loyaltyPointsToRedeem} points — customer only has ${availablePoints}`);
+      }
+      if (loyaltyPointsToRedeem > total) {
+        throw new BadRequestError('Cannot redeem more points than the order total');
       }
     }
 
@@ -123,6 +127,7 @@ const createOrder = async (req, res, next) => {
       tax,
       total,
       paymentMethod,
+      loyaltyPointsRedeemed: loyaltyPointsToRedeem,
       notes,
       createdBy,
       locationId,
@@ -133,9 +138,9 @@ const createOrder = async (req, res, next) => {
       await Customer.linkOrder(customer.id, order.id);
       await Customer.updateStats(customer.id, order.total);
 
-      // Deduct loyalty points if paying with loyalty
-      if (paymentMethod === 'LOYALTY') {
-        await Customer.deductLoyaltyPoints(customer.id, total);
+      // Deduct redeemed loyalty points
+      if (loyaltyPointsToRedeem > 0) {
+        await Customer.deductLoyaltyPoints(customer.id, loyaltyPointsToRedeem);
       }
     }
 

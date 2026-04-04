@@ -27,7 +27,8 @@ export interface CreateOrderRequest {
   customerPhone?: string;
   customerName?: string;
   items: OrderItem[];
-  paymentMethod: 'CASH' | 'CARD' | 'UPI' | 'LOYALTY';
+  paymentMethod: 'CASH' | 'CARD' | 'UPI';
+  loyaltyPointsToRedeem?: number;
   notes?: string;
   locationId?: string;
 }

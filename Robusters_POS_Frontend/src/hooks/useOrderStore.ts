@@ -70,7 +70,7 @@ interface OrderStore {
   clearCustomerInfo: () => void;
 
   // Order actions
-  createOrder: (paymentMethod: 'CASH' | 'CARD' | 'UPI' | 'LOYALTY', notes?: string, locationId?: string, priceOverrides?: Record<string, number>) => Promise<Order>;
+  createOrder: (paymentMethod: 'CASH' | 'CARD' | 'UPI', notes?: string, locationId?: string, priceOverrides?: Record<string, number>, loyaltyPointsToRedeem?: number) => Promise<Order>;
   loadOrders: (search?: string) => Promise<void>;
   loadMoreOrders: (search?: string) => Promise<void>;
 
@@ -141,7 +141,7 @@ export const useOrderStore = create<OrderStore>()(
         set({ customerPhone: '', customerName: '', customerId: null });
       },
 
-      createOrder: async (paymentMethod, notes, locationId, priceOverrides) => {
+      createOrder: async (paymentMethod, notes, locationId, priceOverrides, loyaltyPointsToRedeem) => {
         const state = get();
         set({ isLoading: true, error: null });
 
@@ -168,6 +168,7 @@ export const useOrderStore = create<OrderStore>()(
             customerName: state.customerName || undefined,
             items: orderItems,
             paymentMethod,
+            loyaltyPointsToRedeem: loyaltyPointsToRedeem || undefined,
             notes,
             locationId,
           };

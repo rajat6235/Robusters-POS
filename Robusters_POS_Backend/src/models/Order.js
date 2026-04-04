@@ -68,6 +68,7 @@ const create = async ({
   tax,
   total,
   paymentMethod,
+  loyaltyPointsRedeemed = 0,
   notes,
   createdBy,
   locationId,
@@ -84,8 +85,8 @@ const create = async ({
     const orderResult = await client.query(
       `INSERT INTO orders (
         order_number, customer_phone, customer_name, customer_id, subtotal, tax, total,
-        payment_method, payment_status, status, notes, created_by, location_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        payment_method, payment_status, status, loyalty_points_redeemed, notes, created_by, location_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING *`,
       [
         orderNumber,
@@ -98,6 +99,7 @@ const create = async ({
         paymentMethod,
         PAYMENT_STATUS.PENDING,
         ORDER_STATUS.CONFIRMED,
+        loyaltyPointsRedeemed,
         notes,
         createdBy,
         locationId || null,
@@ -366,7 +368,7 @@ const requestCancellation = async (orderId, managerId, reason) => {
     updatedOrder.refund_info = {
       payment_method: order.payment_method,
       amount: parseFloat(order.total),
-      loyalty_points: order.payment_method === 'LOYALTY' ? parseFloat(order.total) : 0
+      loyalty_points: parseInt(order.loyalty_points_redeemed) || 0,
     };
     
     return updatedOrder;
@@ -429,28 +431,20 @@ const approveCancellation = async (orderId, adminId, approved, adminNotes = '') 
         [ORDER_STATUS.CANCELLED, adminId, orderId]
       );
       
-      // Handle loyalty points refund if applicable
-      if (order.payment_method === 'LOYALTY' && order.customer_id) {
-        const loyaltyPointsToRefund = parseFloat(order.total);
-        
-        // Add loyalty points back to customer
+      // Refund loyalty points that were redeemed on this order
+      const pointsToRefund = parseInt(order.loyalty_points_redeemed) || 0;
+      if (pointsToRefund > 0 && order.customer_id) {
         await client.query(
           'UPDATE customers SET loyalty_points = loyalty_points + $1 WHERE id = $2',
-          [loyaltyPointsToRefund, order.customer_id]
+          [pointsToRefund, order.customer_id]
         );
-        
-        refundInfo = {
-          payment_method: 'LOYALTY',
-          loyalty_points_refunded: loyaltyPointsToRefund,
-          amount: parseFloat(order.total)
-        };
-      } else {
-        refundInfo = {
-          payment_method: order.payment_method,
-          amount: parseFloat(order.total),
-          loyalty_points_refunded: 0
-        };
       }
+
+      refundInfo = {
+        payment_method: order.payment_method,
+        amount: parseFloat(order.total),
+        loyalty_points_refunded: pointsToRefund,
+      };
       
       // Log status history
       await client.query(

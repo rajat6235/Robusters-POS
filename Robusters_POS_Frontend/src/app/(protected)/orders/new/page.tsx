@@ -637,7 +637,8 @@ export default function OrdersPage() {
   const [selectedAddons, setSelectedAddons] = useState<{ addon: Addon; quantity: number }[]>([]);
   const [showCheckout, setShowCheckout] = useState(false);
   const [showCart, setShowCart] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'UPI' | 'LOYALTY'>('CASH');
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'UPI'>('CASH');
+  const [loyaltyPointsToRedeem, setLoyaltyPointsToRedeem] = useState(0);
   const [orderNotes, setOrderNotes] = useState('');
 
   // Location
@@ -817,9 +818,10 @@ export default function OrdersPage() {
   const handlePlaceOrder = async () => {
     try {
       const overrides = Object.keys(priceOverrides).length > 0 ? priceOverrides : undefined;
-      const order = await createOrder(paymentMethod, orderNotes || undefined, checkoutLocationId || undefined, overrides);
+      const order = await createOrder(paymentMethod, orderNotes || undefined, checkoutLocationId || undefined, overrides, loyaltyPointsToRedeem || undefined);
       setShowCheckout(false);
       setShowCart(false);
+      setLoyaltyPointsToRedeem(0);
       setPaymentMethod('CASH');
       setOrderNotes('');
       setCheckoutLocationId(null);
@@ -1280,7 +1282,7 @@ export default function OrdersPage() {
       </Dialog>
 
       {/* Checkout Dialog */}
-      <Dialog open={showCheckout} onOpenChange={setShowCheckout}>
+      <Dialog open={showCheckout} onOpenChange={(open) => { setShowCheckout(open); if (!open) setLoyaltyPointsToRedeem(0); }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1346,25 +1348,70 @@ export default function OrdersPage() {
                   </Button>
                 ))}
               </div>
-              {/* Loyalty Points Payment - only if customer has enough points */}
+              {/* Loyalty Points Partial Redemption */}
               {orderCustomer && (() => {
-                const loyaltyPoints = Number(orderCustomer.loyalty_points || 0);
+                const available = Number(orderCustomer.loyalty_points || 0);
                 const checkoutTotal = getCheckoutTotal();
-                const canUseLoyalty = loyaltyPoints >= checkoutTotal && checkoutTotal > 0;
+                const maxRedeemable = Math.min(available, Math.floor(checkoutTotal));
+                if (available <= 0) return null;
                 return (
-                  <Button
-                    variant={paymentMethod === 'LOYALTY' ? 'default' : 'outline'}
-                    size="sm"
-                    className="w-full"
-                    disabled={!canUseLoyalty}
-                    onClick={() => setPaymentMethod('LOYALTY')}
-                  >
-                    <Gift className="h-3 w-3 mr-1" />
-                    Loyalty Points ({loyaltyPoints} pts)
-                    {!canUseLoyalty && loyaltyPoints > 0 && (
-                      <span className="text-xs ml-1 opacity-70">— not enough</span>
+                  <div className="mt-2 space-y-2 border rounded-lg p-3 bg-muted/30">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-medium flex items-center gap-1.5">
+                        <Gift className="h-3.5 w-3.5 text-yellow-500" />
+                        Redeem Loyalty Points
+                      </label>
+                      <span className="text-xs text-muted-foreground">{available} pts available</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-8 p-0 shrink-0"
+                        onClick={() => setLoyaltyPointsToRedeem(p => Math.max(0, p - 1))}
+                        disabled={loyaltyPointsToRedeem <= 0}
+                      >
+                        <Minus className="h-3 w-3" />
+                      </Button>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={maxRedeemable}
+                        value={loyaltyPointsToRedeem}
+                        onChange={(e) => {
+                          const val = Math.min(maxRedeemable, Math.max(0, Math.floor(Number(e.target.value) || 0)));
+                          setLoyaltyPointsToRedeem(val);
+                        }}
+                        className="h-8 text-center text-sm"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-8 p-0 shrink-0"
+                        onClick={() => setLoyaltyPointsToRedeem(p => Math.min(maxRedeemable, p + 1))}
+                        disabled={loyaltyPointsToRedeem >= maxRedeemable}
+                      >
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs px-2 shrink-0"
+                        onClick={() => setLoyaltyPointsToRedeem(maxRedeemable)}
+                        disabled={loyaltyPointsToRedeem >= maxRedeemable}
+                      >
+                        Max
+                      </Button>
+                    </div>
+                    {loyaltyPointsToRedeem > 0 && (
+                      <p className="text-xs text-green-600 font-medium">
+                        −₹{loyaltyPointsToRedeem} loyalty discount applied
+                      </p>
                     )}
-                  </Button>
+                  </div>
                 );
               })()}
             </div>
@@ -1503,10 +1550,23 @@ export default function OrdersPage() {
                   </div>
                 );
               })}
-              <div className="border-t pt-2 mt-2">
-                <div className="flex justify-between font-bold text-lg">
-                  <span>Total</span>
+              <div className="border-t pt-2 mt-2 space-y-1">
+                <div className="flex justify-between text-sm text-muted-foreground">
+                  <span>Subtotal</span>
                   <span>₹{getCheckoutTotal().toFixed(0)}</span>
+                </div>
+                {loyaltyPointsToRedeem > 0 && (
+                  <div className="flex justify-between text-sm text-green-600">
+                    <span className="flex items-center gap-1">
+                      <Gift className="h-3 w-3" />
+                      Loyalty discount
+                    </span>
+                    <span>−₹{loyaltyPointsToRedeem}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold text-lg pt-1 border-t">
+                  <span>Total Payable</span>
+                  <span>₹{Math.max(0, getCheckoutTotal() - loyaltyPointsToRedeem).toFixed(0)}</span>
                 </div>
               </div>
             </div>
@@ -1515,7 +1575,7 @@ export default function OrdersPage() {
             <Button variant="outline" onClick={() => setShowCheckout(false)} className="w-full sm:w-auto">Cancel</Button>
             <Button onClick={handlePlaceOrder} disabled={orderLoading} className="w-full sm:w-auto">
               {orderLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Place Order — ₹{getCheckoutTotal().toFixed(0)}
+              Place Order — ₹{Math.max(0, getCheckoutTotal() - loyaltyPointsToRedeem).toFixed(0)}
             </Button>
           </DialogFooter>
         </DialogContent>
