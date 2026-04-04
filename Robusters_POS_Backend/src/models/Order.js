@@ -111,13 +111,14 @@ const create = async ({
     for (const item of items) {
       const itemResult = await client.query(
         `INSERT INTO order_items (
-          order_id, menu_item_id, quantity, unit_price, total_price,
+          order_id, menu_item_id, item_name, quantity, unit_price, total_price,
           variant_ids, addon_selections, special_instructions
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING *`,
         [
           order.id,
           item.itemId,
+          item.itemName,
           item.quantity,
           item.unitPrice,
           item.totalPrice,

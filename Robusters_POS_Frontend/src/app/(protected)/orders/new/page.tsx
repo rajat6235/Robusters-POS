@@ -650,9 +650,8 @@ export default function OrdersPage() {
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
   const [editingPriceValue, setEditingPriceValue] = useState('');
 
-  // Load menu data on mount (skip if already cached in store)
   useEffect(() => {
-    if (categories.length === 0) loadMenu();
+    loadMenu();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

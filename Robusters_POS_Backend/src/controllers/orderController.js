@@ -88,6 +88,7 @@ const createOrder = async (req, res, next) => {
 
       processedItems.push({
         itemId: item.itemId,
+        itemName: menuItem.name,
         quantity: item.quantity,
         unitPrice,
         totalPrice,

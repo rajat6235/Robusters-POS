@@ -16,6 +16,7 @@ const { addLoyaltyPayment } = require('./migrations/010_loyalty_payment');
 const { createSettingsSchema } = require('./migrations/011_settings');
 const { up: addSearchIndexes } = require('./migrations/013_search_indexes');
 const { up: addOrderNumberSequence } = require('./migrations/014_order_number_sequence');
+const { up: fixOrderItemsFkey } = require('./migrations/015_order_items_menu_item_fkey');
 
 const useSSL = process.env.DB_SSL === 'true';
 const dbName = process.env.DB_NAME || 'robusters_pos';
@@ -131,6 +132,10 @@ async function initDatabase() {
     console.log('Adding order number sequence table...');
     await addOrderNumberSequence(pool);
     console.log('Order number sequence table added successfully.');
+
+    console.log('Fixing order_items menu_item_id foreign key...');
+    await fixOrderItemsFkey(pool);
+    console.log('order_items_menu_item_id_fkey set to ON DELETE SET NULL.');
 
     await pool.end();
     console.log('\nDatabase initialization complete!');

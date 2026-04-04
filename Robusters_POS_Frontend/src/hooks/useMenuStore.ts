@@ -171,7 +171,6 @@ export const useMenuStore = create<MenuStore>()(
 
       // ---- Menu loading ----
       loadMenu: async () => {
-        if (get().isLoading) return;
         set({ isLoading: true, error: null });
         try {
           const response = await menuService.getPublicMenu();

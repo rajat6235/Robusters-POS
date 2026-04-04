@@ -212,7 +212,7 @@ class Customer {
             json_build_object(
               'id',                   oi.id,
               'menu_item_id',         oi.menu_item_id,
-              'item_name',            mi.name,
+              'item_name',            COALESCE(oi.item_name, mi.name, 'Deleted Item'),
               'diet_type',            mi.diet_type,
               'quantity',             oi.quantity,
               'unit_price',           oi.unit_price::float,
@@ -251,7 +251,7 @@ class Customer {
             ORDER BY oi.created_at
           ) AS items
         FROM order_items oi
-        JOIN menu_items mi ON mi.id = oi.menu_item_id
+        LEFT JOIN menu_items mi ON mi.id = oi.menu_item_id
         WHERE oi.order_id IN (SELECT id FROM paged_orders)
         GROUP BY oi.order_id
       )

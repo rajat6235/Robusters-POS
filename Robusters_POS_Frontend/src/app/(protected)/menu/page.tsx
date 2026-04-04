@@ -951,7 +951,7 @@ function MenuManagementContent() {
   const { isLoading, error, loadMenu, categories } = useMenuStore();
 
   useEffect(() => {
-    if (categories.length === 0) loadMenu();
+    loadMenu();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
