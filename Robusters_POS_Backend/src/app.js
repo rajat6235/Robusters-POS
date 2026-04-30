@@ -24,12 +24,24 @@ app.set('trust proxy', 1);
 app.use(helmet());
 
 // CORS configuration
-// In production, restrict origins to your frontend domain
+const allowedOrigins = config.env === 'production'
+  ? (process.env.ALLOWED_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean) || [])
+  : null;
+
 app.use(cors({
-  origin: config.env === 'production'
-    ? process.env.ALLOWED_ORIGINS?.split(',') || []
-    : true, // reflects request origin (required when credentials: true)
+  origin: allowedOrigins === null
+    ? true
+    : (origin, callback) => {
+        // Allow requests with no origin (mobile apps, curl, Render health checks)
+        if (!origin || allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error(`CORS: origin ${origin} not allowed`));
+        }
+      },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
 // Request logging
