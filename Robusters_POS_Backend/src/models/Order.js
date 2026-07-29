@@ -421,7 +421,9 @@ const approveCancellation = async (orderId, adminId, approved, adminNotes = '') 
     
     // Check if order exists and has cancellation requested
     const orderCheck = await client.query(
-      'SELECT id, status, total, payment_status, payment_method, customer_id, cancellation_requested_by FROM orders WHERE id = $1',
+      `SELECT id, status, total, payment_status, payment_method, customer_id, cancellation_requested_by,
+              is_package_order, customer_package_id, meals_consumed, loyalty_points_redeemed
+       FROM orders WHERE id = $1`,
       [orderId]
     );
     
@@ -464,12 +466,47 @@ const approveCancellation = async (orderId, adminId, approved, adminNotes = '') 
         );
       }
 
+      // Refund the meal credit(s) this order redeemed, if any — the food
+      // was never actually delivered, so the package shouldn't be left
+      // permanently down a meal. Reverses both the ledger entry and the
+      // counter; if the package had auto-completed by using its last meal,
+      // this can bring it back to active.
+      const mealsToRefund = parseInt(order.meals_consumed) || 0;
+      let mealPackageRefund = null;
+      if (order.is_package_order && order.customer_package_id && mealsToRefund > 0) {
+        await client.query(
+          'DELETE FROM package_meal_consumption WHERE order_id = $1',
+          [orderId]
+        );
+
+        const pkgResult = await client.query(
+          `SELECT id, total_meals, consumed_meals, status FROM customer_meal_packages WHERE id = $1 FOR UPDATE`,
+          [order.customer_package_id]
+        );
+        const pkg = pkgResult.rows[0];
+        if (pkg) {
+          const newConsumed = Math.max(0, pkg.consumed_meals - mealsToRefund);
+          const reactivate = pkg.status === 'completed' && newConsumed < pkg.total_meals;
+          const updated = await client.query(
+            `UPDATE customer_meal_packages
+             SET consumed_meals = $1,
+                 status = CASE WHEN $2 THEN 'active' ELSE status END,
+                 completed_at = CASE WHEN $2 THEN NULL ELSE completed_at END
+             WHERE id = $3
+             RETURNING total_meals, consumed_meals, remaining_meals, status`,
+            [newConsumed, reactivate, order.customer_package_id]
+          );
+          mealPackageRefund = { mealsRefunded: mealsToRefund, package: updated.rows[0] };
+        }
+      }
+
       refundInfo = {
         payment_method: order.payment_method,
         amount: parseFloat(order.total),
         loyalty_points_refunded: pointsToRefund,
+        meal_package_refund: mealPackageRefund,
       };
-      
+
       // Log status history
       await client.query(
         `INSERT INTO order_status_history (order_id, previous_status, new_status, changed_by, reason)

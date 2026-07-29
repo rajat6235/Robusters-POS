@@ -515,6 +515,10 @@ const approveCancellation = async (req, res, next) => {
       } else if (order.refund_info.amount > 0) {
         message += `. ₹${order.refund_info.amount} refund has been processed.`;
       }
+      if (order.refund_info.meal_package_refund) {
+        const { mealsRefunded } = order.refund_info.meal_package_refund;
+        message += ` ${mealsRefunded} meal${mealsRefunded === 1 ? '' : 's'} refunded to the customer's meal package.`;
+      }
     }
 
     res.json({
