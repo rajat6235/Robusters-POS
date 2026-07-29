@@ -18,6 +18,11 @@ import {
   History,
   MapPin,
   Settings,
+  Package,
+  PackagePlus,
+  Gauge,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,6 +33,19 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+
+interface SubNavItem {
+  href: string;
+  icon: React.ReactNode;
+  label: string;
+}
+
+interface NavItemConfig {
+  href?: string;
+  icon: React.ReactNode;
+  label: string;
+  subItems?: SubNavItem[];
+}
 
 interface NavItemProps {
   href: string;
@@ -53,6 +71,73 @@ const NavItem: React.FC<NavItemProps> = ({ href, icon, label, isActive, onClick 
     <span>{label}</span>
   </Link>
 );
+
+interface NavGroupProps {
+  icon: React.ReactNode;
+  label: string;
+  subItems: SubNavItem[];
+  isActive: boolean;
+  onClick?: () => void;
+}
+
+const NavGroup: React.FC<NavGroupProps> = ({ icon, label, subItems, isActive, onClick }) => {
+  const pathname = usePathname();
+  const [isExpanded, setIsExpanded] = useState(isActive);
+
+  useEffect(() => {
+    if (isActive) {
+      setIsExpanded(true);
+    }
+  }, [isActive]);
+
+  return (
+    <div>
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className={cn(
+          'flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all touch-target',
+          'hover:bg-accent hover:text-accent-foreground',
+          isActive
+            ? 'bg-accent text-accent-foreground'
+            : 'text-muted-foreground'
+        )}
+      >
+        {icon}
+        <span className="flex-1 text-left">{label}</span>
+        {isExpanded ? (
+          <ChevronDown className="h-4 w-4" />
+        ) : (
+          <ChevronRight className="h-4 w-4" />
+        )}
+      </button>
+      {isExpanded && (
+        <div className="ml-4 mt-1 space-y-1">
+          {subItems.map((item) => {
+            const isSubItemActive = pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={onClick}
+                className={cn(
+                  'flex items-center gap-3 rounded-lg px-4 py-2 text-sm transition-all touch-target',
+                  'hover:bg-accent hover:text-accent-foreground',
+                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
+                  isSubItemActive
+                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                    : 'text-muted-foreground'
+                )}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
 
 /** Location selector dropdown used in both desktop and mobile sidebar */
 function LocationSelector() {
@@ -110,12 +195,39 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
 
   const isAdmin = user?.role === 'ADMIN';
+  // Manager or Admin — matches the backend's `managerOrAdmin` route guard on
+  // the ordering/assignment/dashboard endpoints. Package *definition* CRUD
+  // (create/edit/delete/allowed-items) stays admin-only below, matching the
+  // `adminOnly` guard on those specific routes.
+  const isManagerOrAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
-  const navItems = [
+  const navItems: NavItemConfig[] = [
     { href: '/dashboard', icon: <LayoutDashboard className="h-5 w-5" />, label: 'Dashboard' },
     { href: '/orders', icon: <ShoppingCart className="h-5 w-5" />, label: 'Orders' },
     { href: '/customers', icon: <Users className="h-5 w-5" />, label: 'Customers' },
   ];
+
+  if (isManagerOrAdmin) {
+    const mealPackageSubItems: SubNavItem[] = [];
+
+    if (isAdmin) {
+      mealPackageSubItems.push({
+        href: '/meal-packages', icon: <Package className="h-4 w-4" />, label: 'Manage Packages',
+      });
+    }
+
+    mealPackageSubItems.push(
+      { href: '/meal-packages/assign', icon: <PackagePlus className="h-4 w-4" />, label: 'Assign Package' },
+      { href: '/meal-package-orders', icon: <ShoppingCart className="h-4 w-4" />, label: 'Package Orders' },
+      { href: '/meal-packages/dashboard', icon: <Gauge className="h-4 w-4" />, label: 'Dashboard' },
+    );
+
+    navItems.push({
+      icon: <Package className="h-5 w-5" />,
+      label: 'Meal Packages',
+      subItems: mealPackageSubItems,
+    });
+  }
 
   if (isAdmin) {
     navItems.push(
@@ -159,15 +271,37 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           </div>
 
           <nav className="flex-1 space-y-2 p-4">
-            {navItems.map((item) => (
-              <NavItem
-                key={item.href}
-                href={item.href}
-                icon={item.icon}
-                label={item.label}
-                isActive={pathname === item.href || (item.href === '/orders' && pathname.startsWith('/orders'))}
-              />
-            ))}
+            {navItems.map((item, index) => {
+              if (item.subItems) {
+                // Grouped navigation item
+                const isGroupActive = item.subItems.some(
+                  (subItem) => pathname === subItem.href || pathname.startsWith(subItem.href)
+                );
+                return (
+                  <NavGroup
+                    key={`group-${index}`}
+                    icon={item.icon}
+                    label={item.label}
+                    subItems={item.subItems}
+                    isActive={isGroupActive}
+                  />
+                );
+              } else {
+                // Regular navigation item
+                const isActive =
+                  pathname === item.href ||
+                  (item.href === '/orders' && pathname.startsWith('/orders'));
+                return (
+                  <NavItem
+                    key={item.href}
+                    href={item.href!}
+                    icon={item.icon}
+                    label={item.label}
+                    isActive={isActive}
+                  />
+                );
+              }
+            })}
           </nav>
 
           <div className="border-t p-4">
@@ -212,16 +346,39 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           </div>
 
           <nav className="flex-1 space-y-2 p-4">
-            {navItems.map((item) => (
-              <NavItem
-                key={item.href}
-                href={item.href}
-                icon={item.icon}
-                label={item.label}
-                isActive={pathname === item.href || (item.href === '/orders' && pathname.startsWith('/orders'))}
-                onClick={closeMobileMenu}
-              />
-            ))}
+            {navItems.map((item, index) => {
+              if (item.subItems) {
+                // Grouped navigation item
+                const isGroupActive = item.subItems.some(
+                  (subItem) => pathname === subItem.href || pathname.startsWith(subItem.href)
+                );
+                return (
+                  <NavGroup
+                    key={`group-${index}`}
+                    icon={item.icon}
+                    label={item.label}
+                    subItems={item.subItems}
+                    isActive={isGroupActive}
+                    onClick={closeMobileMenu}
+                  />
+                );
+              } else {
+                // Regular navigation item
+                const isActive =
+                  pathname === item.href ||
+                  (item.href === '/orders' && pathname.startsWith('/orders'));
+                return (
+                  <NavItem
+                    key={item.href}
+                    href={item.href!}
+                    icon={item.icon}
+                    label={item.label}
+                    isActive={isActive}
+                    onClick={closeMobileMenu}
+                  />
+                );
+              }
+            })}
           </nav>
 
           <div className="border-t p-4">

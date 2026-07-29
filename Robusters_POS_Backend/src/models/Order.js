@@ -12,6 +12,7 @@ const PAYMENT_METHODS = {
   CARD: 'CARD',
   UPI: 'UPI',
   LOYALTY: 'LOYALTY',
+  PACKAGE: 'PACKAGE',
 };
 
 // Valid payment statuses
@@ -57,6 +58,11 @@ const generateOrderNumber = async (client) => {
 /**
  * Create a new order
  * @param {Object} orderData - Order data
+ * @param {Object} [externalClient] - An already-open transaction client to
+ *   participate in (e.g. from the meal-package redemption flow, which needs
+ *   the order and the meal-consumption write to commit/rollback together).
+ *   When omitted, this function manages its own BEGIN/COMMIT/ROLLBACK exactly
+ *   as before — every existing caller is unaffected.
  * @returns {Promise<Object>} Created order with items
  */
 const create = async ({
@@ -68,15 +74,20 @@ const create = async ({
   tax,
   total,
   paymentMethod,
+  paymentStatus = PAYMENT_STATUS.PENDING,
   loyaltyPointsRedeemed = 0,
   notes,
   createdBy,
   locationId,
-}) => {
-  const client = await db.getClient();
+  customerPackageId = null,
+  mealsConsumed = 0,
+  isPackageOrder = false,
+}, externalClient = null) => {
+  const client = externalClient || await db.getClient();
+  const manageTransaction = !externalClient;
 
   try {
-    await client.query('BEGIN');
+    if (manageTransaction) await client.query('BEGIN');
 
     // Generate order number — uses client so it participates in the same transaction
     const orderNumber = await generateOrderNumber(client);
@@ -85,8 +96,9 @@ const create = async ({
     const orderResult = await client.query(
       `INSERT INTO orders (
         order_number, customer_phone, customer_name, customer_id, subtotal, tax, total,
-        payment_method, payment_status, status, loyalty_points_redeemed, notes, created_by, location_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        payment_method, payment_status, status, loyalty_points_redeemed, notes, created_by, location_id,
+        customer_package_id, meals_consumed, is_package_order
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       RETURNING *`,
       [
         orderNumber,
@@ -97,25 +109,28 @@ const create = async ({
         tax,
         total,
         paymentMethod,
-        PAYMENT_STATUS.PENDING,
+        paymentStatus,
         ORDER_STATUS.CONFIRMED,
         loyaltyPointsRedeemed,
         notes,
         createdBy,
         locationId || null,
+        customerPackageId,
+        mealsConsumed,
+        isPackageOrder,
       ]
     );
-    
+
     const order = orderResult.rows[0];
-    
+
     // Create order items
     const orderItems = [];
     for (const item of items) {
       const itemResult = await client.query(
         `INSERT INTO order_items (
           order_id, menu_item_id, item_name, quantity, unit_price, total_price,
-          variant_ids, addon_selections, special_instructions
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          variant_ids, addon_selections, special_instructions, package_covered_quantity
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         RETURNING *`,
         [
           order.id,
@@ -127,43 +142,49 @@ const create = async ({
           JSON.stringify(item.variantIds || []),
           JSON.stringify(item.addonSelections || []),
           item.specialInstructions,
+          item.packageCoveredQuantity || 0,
         ]
       );
-      
+
       orderItems.push(itemResult.rows[0]);
     }
-    
-    await client.query('COMMIT');
-    
-    // Log activity after successful commit
-    try {
-      await ActivityLog.create({
-        userId: createdBy,
-        action: ActivityLog.ACTIONS.ORDER_CREATED,
-        details: {
-          orderId: order.id,
-          orderNumber: order.order_number,
-          customerPhone: customerPhone,
-          customerName: customerName,
-          total: parseFloat(total),
-          paymentMethod: paymentMethod,
-          itemCount: items.length,
-          locationId: locationId
-        }
-      });
-    } catch (logError) {
-      console.error('Failed to log order creation activity:', logError);
+
+    if (manageTransaction) await client.query('COMMIT');
+
+    // Log activity after successful commit. When an external client is
+    // supplied, the caller owns the outer commit and is responsible for its
+    // own post-commit logging instead (the outer transaction may still roll
+    // back after this insert, e.g. if meal consumption recording fails).
+    if (manageTransaction) {
+      try {
+        await ActivityLog.create({
+          userId: createdBy,
+          action: ActivityLog.ACTIONS.ORDER_CREATED,
+          details: {
+            orderId: order.id,
+            orderNumber: order.order_number,
+            customerPhone: customerPhone,
+            customerName: customerName,
+            total: parseFloat(total),
+            paymentMethod: paymentMethod,
+            itemCount: items.length,
+            locationId: locationId
+          }
+        });
+      } catch (logError) {
+        console.error('Failed to log order creation activity:', logError);
+      }
     }
-    
+
     return {
       ...order,
       items: orderItems,
     };
   } catch (error) {
-    await client.query('ROLLBACK');
+    if (manageTransaction) await client.query('ROLLBACK');
     throw error;
   } finally {
-    client.release();
+    if (manageTransaction) client.release();
   }
 };
 
@@ -244,10 +265,13 @@ const findAll = async ({
 const findById = async (id) => {
   // Get order
   const orderResult = await db.query(
-    `SELECT o.*, u.first_name, u.last_name, l.name as location_name
+    `SELECT o.*, u.first_name, u.last_name, l.name as location_name,
+       mp.name as meal_package_name
      FROM orders o
      LEFT JOIN users u ON u.id = o.created_by
      LEFT JOIN locations l ON l.id = o.location_id
+     LEFT JOIN customer_meal_packages cmp ON cmp.id = o.customer_package_id
+     LEFT JOIN meal_packages mp ON mp.id = cmp.package_id
      WHERE o.id = $1`,
     [id]
   );
@@ -698,12 +722,16 @@ const findAllWithItems = async ({
         o.notes, o.created_by, o.location_id, o.created_at, o.updated_at,
         o.status, o.cancellation_requested_by, o.cancellation_requested_at,
         o.cancellation_reason, o.cancelled_by, o.cancelled_at,
+        o.is_package_order, o.meals_consumed, o.customer_package_id,
+        mp.name AS meal_package_name,
         u.first_name, u.last_name,
         l.name AS location_name,
         COUNT(*) OVER() AS total_count
       FROM orders o
       LEFT JOIN users u ON u.id = o.created_by
       LEFT JOIN locations l ON l.id = o.location_id
+      LEFT JOIN customer_meal_packages cmp ON cmp.id = o.customer_package_id
+      LEFT JOIN meal_packages mp ON mp.id = cmp.package_id
       ${whereClause}
       ORDER BY o.created_at DESC
       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
@@ -720,6 +748,7 @@ const findAllWithItems = async ({
             'quantity',             oi.quantity,
             'unit_price',           oi.unit_price::float,
             'total_price',          oi.total_price::float,
+            'package_covered_quantity', oi.package_covered_quantity,
             'special_instructions', oi.special_instructions,
             'variants', (
               SELECT COALESCE(json_agg(json_build_object('name', iv.name, 'price', iv.price::float)), '[]')

@@ -9,6 +9,13 @@ import { toast } from 'sonner';
 // Cancels the previous in-flight search request when a new one starts
 let searchAbortController: AbortController | null = null;
 
+// Stable per-order-attempt key so a network retry or accidental double-submit
+// of the same order is deduped server-side instead of creating a duplicate
+// order (and double-consuming a meal-package credit). Cleared once the cart
+// empties (order placed, or cart cleared) so the next, genuinely new order
+// gets a fresh key — mirrors the pattern already used in OTPVerificationStep.
+let orderIdempotencyKey: string | null = null;
+
 export interface CartItem {
   id: string;
   menuItem: MenuItem;
@@ -16,6 +23,26 @@ export interface CartItem {
   quantity: number;
   addonSelections: { addon: Addon; quantity: number }[];
   specialInstructions?: string;
+}
+
+/** Order-independent equality for two id lists (e.g. selected variant ids). */
+function sameIdSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sorted = (ids: string[]) => [...ids].sort();
+  const [sa, sb] = [sorted(a), sorted(b)];
+  return sa.every((id, i) => id === sb[i]);
+}
+
+/** Order-independent equality for two addon-selection lists (by addon id + quantity). */
+function sameAddonSelections(
+  a: { addon: Addon; quantity: number }[],
+  b: { addon: Addon; quantity: number }[]
+): boolean {
+  if (a.length !== b.length) return false;
+  const key = (s: { addon: Addon; quantity: number }) => `${s.addon.id}:${s.quantity}`;
+  const sorted = (list: typeof a) => list.map(key).sort();
+  const [sa, sb] = [sorted(a), sorted(b)];
+  return sa.every((k, i) => k === sb[i]);
 }
 
 /** Calculate unit price for a cart item (sync, no API call) */
@@ -70,7 +97,7 @@ interface OrderStore {
   clearCustomerInfo: () => void;
 
   // Order actions
-  createOrder: (paymentMethod: 'CASH' | 'CARD' | 'UPI', notes?: string, locationId?: string, priceOverrides?: Record<string, number>, loyaltyPointsToRedeem?: number) => Promise<Order>;
+  createOrder: (paymentMethod: 'CASH' | 'CARD' | 'UPI', notes?: string, locationId?: string, priceOverrides?: Record<string, number>, loyaltyPointsToRedeem?: number, useMealPackage?: boolean) => Promise<Order>;
   loadOrders: (search?: string) => Promise<void>;
   loadMoreOrders: (search?: string) => Promise<void>;
 
@@ -101,18 +128,40 @@ export const useOrderStore = create<OrderStore>()(
       error: null,
 
       addToCart: (menuItem, selectedVariants, quantity, addonSelections = [], specialInstructions) => {
-        const cartItem: CartItem = {
-          id: `cart-${Date.now()}-${Math.random()}`,
-          menuItem,
-          selectedVariants,
-          quantity,
-          addonSelections,
-          specialInstructions,
-        };
+        // Merge into an existing line for the same item/variants/addons/notes
+        // instead of appending a new one — besides the obvious cart-UX win
+        // (no more duplicate rows for "the same thing, added twice"), this
+        // also matters for meal-package redemption: a package's per-item
+        // max_quantity cap is enforced per matched rule across the cart, and
+        // splitting one item across multiple lines used to be a way to dodge
+        // that cap. A genuinely different variant/addon/note selection is
+        // still its own line, since it's a materially different order.
+        const sameKey = (item: CartItem) =>
+          item.menuItem.id === menuItem.id &&
+          (item.specialInstructions || '') === (specialInstructions || '') &&
+          sameIdSet(item.selectedVariants.map(v => v.id), selectedVariants.map(v => v.id)) &&
+          sameAddonSelections(item.addonSelections, addonSelections);
 
-        set(state => ({
-          cart: [...state.cart, cartItem]
-        }));
+        set(state => {
+          const existing = state.cart.find(sameKey);
+          if (existing) {
+            return {
+              cart: state.cart.map(item =>
+                item === existing ? { ...item, quantity: item.quantity + quantity } : item
+              ),
+            };
+          }
+
+          const cartItem: CartItem = {
+            id: `cart-${Date.now()}-${Math.random()}`,
+            menuItem,
+            selectedVariants,
+            quantity,
+            addonSelections,
+            specialInstructions,
+          };
+          return { cart: [...state.cart, cartItem] };
+        });
       },
 
       updateCartItem: (cartItemId, updates) => {
@@ -130,6 +179,7 @@ export const useOrderStore = create<OrderStore>()(
       },
 
       clearCart: () => {
+        orderIdempotencyKey = null;
         set({ cart: [] });
       },
 
@@ -141,7 +191,7 @@ export const useOrderStore = create<OrderStore>()(
         set({ customerPhone: '', customerName: '', customerId: null });
       },
 
-      createOrder: async (paymentMethod, notes, locationId, priceOverrides, loyaltyPointsToRedeem) => {
+      createOrder: async (paymentMethod, notes, locationId, priceOverrides, loyaltyPointsToRedeem, useMealPackage) => {
         const state = get();
         set({ isLoading: true, error: null });
 
@@ -164,6 +214,7 @@ export const useOrderStore = create<OrderStore>()(
           });
 
           const orderData: CreateOrderRequest = {
+            customerId: state.customerId || undefined,
             customerPhone: state.customerPhone || undefined,
             customerName: state.customerName || undefined,
             items: orderItems,
@@ -171,11 +222,14 @@ export const useOrderStore = create<OrderStore>()(
             loyaltyPointsToRedeem: loyaltyPointsToRedeem || undefined,
             notes,
             locationId,
+            useMealPackage,
           };
 
-          const response = await orderService.createOrder(orderData);
+          if (!orderIdempotencyKey) orderIdempotencyKey = crypto.randomUUID();
+          const response = await orderService.createOrder(orderData, orderIdempotencyKey);
 
           if (response.success) {
+            orderIdempotencyKey = null;
             set(state => ({
               orders: [response.data.order, ...state.orders],
               pagination: state.pagination ? { ...state.pagination, total: state.pagination.total + 1 } : null,

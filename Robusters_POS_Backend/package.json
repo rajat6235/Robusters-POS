@@ -9,7 +9,12 @@
     "db:seed": "node src/database/seed.js",
     "db:seed-menu": "node src/database/seedMenu.js",
     "db:search-indexes": "node src/database/migrations/013_search_indexes.js",
-    "db:order-sequence": "node src/database/migrations/014_order_number_sequence.js"
+    "db:order-sequence": "node src/database/migrations/014_order_number_sequence.js",
+    "db:meal-package-fixes": "node src/database/migrations/017_meal_package_fixes.js",
+    "db:allowed-item-max-quantity": "node src/database/migrations/018_package_allowed_item_max_quantity.js",
+    "db:allowed-items-unique": "node src/database/migrations/019_package_allowed_items_unique.js",
+    "db:idempotency-keys": "node src/database/migrations/020_idempotency_keys.js",
+    "db:order-items-package-coverage": "node src/database/migrations/021_order_items_package_coverage.js"
   },
   "keywords": ["pos", "restaurant", "backend"],
   "author": "Robusters",

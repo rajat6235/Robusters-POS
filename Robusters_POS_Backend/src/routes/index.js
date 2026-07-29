@@ -15,6 +15,8 @@ const activityLogRoutes = require('./activityLogs');
 const dashboardRoutes = require('./dashboard');
 const locationRoutes = require('./locations');
 const settingsRoutes = require('./settings');
+const mealPackageRoutes = require('./mealPackages');
+const mealPackageOrderRoutes = require('./mealPackageOrders');
 
 // Mount routes
 router.use('/auth', authRoutes);
@@ -26,5 +28,7 @@ router.use('/activity-logs', activityLogRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/locations', locationRoutes);
 router.use('/settings', settingsRoutes);
+router.use('/admin', mealPackageRoutes);
+router.use('/meal-package-orders', mealPackageOrderRoutes);
 
 module.exports = router;

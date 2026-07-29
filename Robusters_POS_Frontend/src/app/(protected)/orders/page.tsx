@@ -37,6 +37,7 @@ import {
   XCircle,
   AlertTriangle,
   Loader2,
+  Package,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -256,8 +257,8 @@ export default function OrdersPage() {
                 </SelectContent>
               </Select>
 
-              {/* Branch Filter */}
-              {locations.length > 0 && (
+              {/* Branch Filter — only shown when there are multiple locations */}
+              {locations.filter(l => l.is_active).length > 1 && (
                 <Select value={branchFilter} onValueChange={setBranchFilter}>
                   <SelectTrigger className="w-full sm:w-40">
                     <MapPin className="h-4 w-4 mr-1 shrink-0" />
@@ -336,6 +337,7 @@ export default function OrdersPage() {
               const createdByName = [order.first_name, order.last_name].filter(Boolean).join(' ') || null;
               const status = order.status || 'CONFIRMED';
               const hasCancellationRequest = order.cancellation_requested_by && status === 'CONFIRMED';
+              const isPackageOrder = order.is_package_order;
 
               return (
                 <Card key={order.id} className="hover:shadow-lg hover:border-accent-foreground/20 transition-all duration-200">
@@ -343,9 +345,20 @@ export default function OrdersPage() {
                     <div className="flex flex-col sm:flex-row justify-between items-start gap-3 sm:gap-4">
                       {/* Order Info */}
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 sm:gap-3 mb-2">
+                        <div className="flex items-center gap-2 sm:gap-3 mb-2 flex-wrap">
                           <h3 className="font-semibold text-base sm:text-lg">#{orderNumber}</h3>
                           <OrderStatusBadge status={status as 'CONFIRMED' | 'CANCELLED'} />
+                          {isPackageOrder && (
+                            <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/30 gap-1">
+                              <Package className="h-3 w-3" />
+                              {order.meal_package_name || 'Meal Package'}
+                              {typeof order.meals_consumed === 'number' && order.meals_consumed > 0 && (
+                                <span className="opacity-75">
+                                  · {order.meals_consumed} meal{order.meals_consumed === 1 ? '' : 's'}
+                                </span>
+                              )}
+                            </Badge>
+                          )}
                           {hasCancellationRequest && (
                             <Badge variant="outline" className="bg-orange-100 text-orange-800">
                               Cancellation Requested
@@ -397,7 +410,9 @@ export default function OrdersPage() {
                           <div className="space-y-2 mb-3">
                             <p className="text-xs sm:text-sm font-medium text-muted-foreground">Items:</p>
                             <div className="space-y-2">
-                              {items.map((item: any, itemIndex: number) => (
+                              {items.map((item: any, itemIndex: number) => {
+                                const coveredQty = item.package_covered_quantity || 0;
+                                return (
                                 <div key={item.id || itemIndex} className="bg-muted/30 rounded-md p-2 text-xs sm:text-sm">
                                   <div className="flex items-center justify-between mb-1">
                                     <div className="flex items-center gap-2 min-w-0">
@@ -417,6 +432,13 @@ export default function OrdersPage() {
                                       </span>
                                     </div>
                                   </div>
+
+                                  {coveredQty > 0 && (
+                                    <div className="flex items-center gap-1 text-xs text-green-600 mb-1">
+                                      <Package className="h-3 w-3" />
+                                      Covered by Meal Package{coveredQty < (item.quantity || 1) ? ` (${coveredQty} of ${item.quantity})` : ''}
+                                    </div>
+                                  )}
 
                                   {/* Variants and Unit Price */}
                                   <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
@@ -444,7 +466,8 @@ export default function OrdersPage() {
                                     </div>
                                   )}
                                 </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           </div>
                         )}
@@ -648,9 +671,15 @@ export default function OrdersPage() {
       <Dialog open={!!selectedOrder} onOpenChange={() => setSelectedOrder(null)}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2 flex-wrap">
               <Receipt className="h-5 w-5" />
               Order #{selectedOrder?.orderNumber || selectedOrder?.order_number || 'N/A'}
+              {selectedOrder?.is_package_order && (
+                <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/30 gap-1 font-normal">
+                  <Package className="h-3 w-3" />
+                  {selectedOrder.meal_package_name || 'Meal Package'}
+                </Badge>
+              )}
             </DialogTitle>
           </DialogHeader>
 
@@ -669,6 +698,17 @@ export default function OrdersPage() {
                   <div>
                     <label className="text-sm font-medium text-muted-foreground">Branch</label>
                     <p className="mt-1 flex items-center gap-1.5"><MapPin className="h-4 w-4" />{detailLocationName}</p>
+                  </div>
+                )}
+                {selectedOrder.is_package_order && (
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Meal Package</label>
+                    <p className="mt-1 flex items-center gap-1.5 text-green-600">
+                      <Package className="h-4 w-4" />
+                      {selectedOrder.meal_package_name || 'Meal Package'}
+                      {typeof selectedOrder.meals_consumed === 'number' && selectedOrder.meals_consumed > 0 &&
+                        ` — ${selectedOrder.meals_consumed} meal${selectedOrder.meals_consumed === 1 ? '' : 's'} redeemed`}
+                    </p>
                   </div>
                 )}
                 {detailCreatedByName && (
@@ -723,6 +763,17 @@ export default function OrdersPage() {
                           </p>
                         </div>
                       </div>
+
+                      {/* Meal Package Coverage */}
+                      {!!item.package_covered_quantity && (
+                        <div className="flex items-center gap-1 text-xs sm:text-sm text-green-600">
+                          <Package className="h-3 w-3" />
+                          Covered by Meal Package
+                          {item.package_covered_quantity < (item.quantity || 1)
+                            ? ` (${item.package_covered_quantity} of ${item.quantity})`
+                            : ''}
+                        </div>
+                      )}
 
                       {/* Variants */}
                       {item.variants && Array.isArray(item.variants) && item.variants.length > 0 && (

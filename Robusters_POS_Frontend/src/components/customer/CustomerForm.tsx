@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useCustomerStore } from '@/hooks/useCustomerStore';
-import { CreateCustomerRequest } from '@/services/customerService';
+import { CreateCustomerRequest, Customer } from '@/services/customerService';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,17 +13,19 @@ interface CustomerFormProps {
   onSuccess?: (customer?: any) => void;
   onCancel?: () => void;
   initialPhone?: string;
+  customer?: Customer;
 }
 
-export function CustomerForm({ onSuccess, onCancel, initialPhone }: CustomerFormProps) {
-  const { createCustomer, isLoading } = useCustomerStore();
+export function CustomerForm({ onSuccess, onCancel, initialPhone, customer }: CustomerFormProps) {
+  const { createCustomer, updateCustomer, isLoading } = useCustomerStore();
+  const isEditMode = !!customer;
 
   const [formData, setFormData] = useState<CreateCustomerRequest>({
-    phone: initialPhone || '',
-    email: '',
-    firstName: '',
-    lastName: '',
-    dateOfBirth: ''
+    phone: customer?.phone || initialPhone || '',
+    email: customer?.email || '',
+    firstName: customer?.first_name || '',
+    lastName: customer?.last_name || '',
+    dateOfBirth: customer?.date_of_birth ? customer.date_of_birth.split('T')[0] : '',
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -69,16 +71,26 @@ export function CustomerForm({ onSuccess, onCancel, initialPhone }: CustomerForm
     }
 
     try {
-      const newCustomer = await createCustomer({
-        ...formData,
-        email: formData.email || undefined,
-        lastName: formData.lastName || undefined,
-        dateOfBirth: formData.dateOfBirth || undefined
-      });
-
-      onSuccess?.(newCustomer);
+      if (isEditMode && customer) {
+        const updated = await updateCustomer(customer.id, {
+          phone: formData.phone || undefined,
+          email: formData.email || undefined,
+          firstName: formData.firstName || undefined,
+          lastName: formData.lastName || undefined,
+          dateOfBirth: formData.dateOfBirth || undefined,
+        });
+        onSuccess?.(updated);
+      } else {
+        const newCustomer = await createCustomer({
+          ...formData,
+          email: formData.email || undefined,
+          lastName: formData.lastName || undefined,
+          dateOfBirth: formData.dateOfBirth || undefined,
+        });
+        onSuccess?.(newCustomer);
+      }
     } catch (error: any) {
-      const message: string = error.response?.data?.message || error.message || 'Failed to create customer';
+      const message: string = error.response?.data?.message || error.message || (isEditMode ? 'Failed to update customer' : 'Failed to create customer');
       if (message.toLowerCase().includes('phone number already exists')) {
         setErrors(prev => ({ ...prev, phone: 'This phone number is already registered' }));
       } else if (message.toLowerCase().includes('email already exists')) {
@@ -184,10 +196,10 @@ export function CustomerForm({ onSuccess, onCancel, initialPhone }: CustomerForm
           {isLoading ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              Creating...
+              {isEditMode ? 'Saving...' : 'Creating...'}
             </>
           ) : (
-            'Create Customer'
+            isEditMode ? 'Save Changes' : 'Create Customer'
           )}
         </Button>
       </div>

@@ -23,12 +23,33 @@ const errorHandler = (err, req, res, next) => {
   let statusCode = err.statusCode || 500;
   let code = err.code || 'INTERNAL_ERROR';
   let message = err.message || 'An unexpected error occurred';
+  let isOperational = err.isOperational || false;
 
   // Handle specific error types
   if (err.name === 'ValidationError' && err.errors) {
     // Express-validator errors
     statusCode = 422;
     code = 'VALIDATION_ERROR';
+  }
+
+  // Map raw Postgres constraint violations to friendly, safe responses
+  // instead of letting the driver's own message (which can name internal
+  // columns/constraints) reach the client.
+  if (err.code === '23505') { // unique_violation
+    statusCode = 409;
+    code = 'CONFLICT';
+    message = 'This record already exists or was already processed.';
+    isOperational = true;
+  } else if (err.code === '23514') { // check_violation
+    statusCode = 400;
+    code = 'BAD_REQUEST';
+    message = 'This action is not allowed — it would violate a data limit (e.g. exceeding an available quantity).';
+    isOperational = true;
+  } else if (err.code === '23503') { // foreign_key_violation
+    statusCode = 400;
+    code = 'BAD_REQUEST';
+    message = 'This action references a record that no longer exists.';
+    isOperational = true;
   }
 
   // Handle database connection errors (e.g. Render free plan expiry)
@@ -42,6 +63,7 @@ const errorHandler = (err, req, res, next) => {
     statusCode = 503;
     code = 'DATABASE_UNAVAILABLE';
     message = 'Database unavailable. Your Render database plan may have expired — please upgrade to resume service.';
+    isOperational = true;
   }
 
   // Always log the real error server-side (never hidden — needed for debugging production)
@@ -53,7 +75,7 @@ const errorHandler = (err, req, res, next) => {
   }
 
   // Don't leak error details in production for non-operational errors
-  if (config.env === 'production' && !err.isOperational) {
+  if (config.env === 'production' && !isOperational) {
     message = 'An unexpected error occurred';
     code = 'INTERNAL_ERROR';
   }

@@ -21,9 +21,17 @@ export interface OrderItem {
   total_price?: number | string; // Backend returns snake_case
   item_name?: string; // Backend includes item name
   itemName?: string;
+  // How many units of this line were redeemed against a meal package
+  // (billed at ₹0) rather than charged normally.
+  package_covered_quantity?: number;
 }
 
 export interface CreateOrderRequest {
+  // Known customer id, when one was already resolved (e.g. from the
+  // checkout customer-lookup step) — lets the backend resolve the exact
+  // same customer record the meal-package preview was computed against,
+  // rather than re-resolving by phone (see mealPackageFallback docs).
+  customerId?: string;
   customerPhone?: string;
   customerName?: string;
   items: OrderItem[];
@@ -31,6 +39,65 @@ export interface CreateOrderRequest {
   loyaltyPointsToRedeem?: number;
   notes?: string;
   locationId?: string;
+  // false when the "use meal package" toggle is switched off for this
+  // order — the order is charged in full instead of auto-redeeming.
+  useMealPackage?: boolean;
+}
+
+export interface MealPackageRedemptionResult {
+  packageId: string;
+  packageName: string;
+  mealsUsed: number;
+  remainingMeals: number;
+  totalSaved: number;
+}
+
+export interface MealPackagePreviewItemResult {
+  itemId: string;
+  name: string;
+  variantIds: string[];
+  quantity: number;
+  unitPrice: number;
+  coveredQty: number;
+  chargedQty: number;
+  covered: boolean;
+}
+
+export type MealPackagePreviewReason =
+  | 'no_customer'
+  | 'no_active_package'
+  | 'expired'
+  | 'exhausted'
+  | 'no_matching_items'
+  | 'declined'
+  | null;
+
+export interface MealPackagePreviewResponse {
+  applied: boolean;
+  reason: MealPackagePreviewReason;
+  package: { id: string; name: string; remainingMeals: number } | null;
+  items: MealPackagePreviewItemResult[];
+  cartTotal: number;
+  totalSaved: number;
+  finalAmount: number;
+  mealsWillBeUsed: number;
+  remainingMealsAfter: number | null;
+  // Populated when reason === 'declined' — what the package would have
+  // saved had the "use meal package" toggle been left on.
+  wouldHaveSaved?: number;
+}
+
+export interface MealPackagePreviewRequest {
+  customerId?: string;
+  items: Array<{
+    itemId: string;
+    quantity: number;
+    variantIds?: string[];
+    customUnitPrice?: number;
+  }>;
+  // false when the staff/customer has switched off the "use meal package"
+  // toggle for this order — omit or true to redeem as normal.
+  useMealPackage?: boolean;
 }
 
 export interface Order {
@@ -71,6 +138,20 @@ export interface Order {
   cancelled_at?: string;
   requester_first_name?: string;
   requester_last_name?: string;
+  // Persisted meal-package redemption info (returned on later reads —
+  // GET /orders, GET /orders/:id — not just the create response).
+  is_package_order?: boolean;
+  meals_consumed?: number;
+  customer_package_id?: string;
+  meal_package_name?: string;
+  // Present when this order automatically redeemed items against the
+  // customer's active meal package (see meal-package-preview / createOrder)
+  mealPackageRedemption?: MealPackageRedemptionResult | null;
+  // Present when a meal-package redemption was expected (per the preview)
+  // but the package ran out or was deactivated by a concurrent order in the
+  // moment between preview and checkout — the order was still placed, at
+  // full price, instead of failing outright.
+  mealPackageFallback?: { reason: string } | null;
 }
 
 export interface OrdersResponse {
@@ -119,10 +200,27 @@ export interface StatusHistoryEntry {
 }
 
 export const orderService = {
-  // Create new order
-  async createOrder(orderData: CreateOrderRequest): Promise<CreateOrderResponse> {
-    const response = await apiClient.post<CreateOrderResponse>('/orders', orderData);
+  // Create new order. An idempotencyKey lets a network retry or accidental
+  // double-submit of the same order be deduped server-side instead of
+  // creating a duplicate order (and double-consuming a meal-package credit).
+  async createOrder(orderData: CreateOrderRequest, idempotencyKey?: string): Promise<CreateOrderResponse> {
+    const response = await apiClient.post<CreateOrderResponse>('/orders', orderData, {
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+    });
     return response.data;
+  },
+
+  // Preview meal-package coverage for a cart, without creating an order —
+  // the backend recomputes this exact same way at actual checkout, so this
+  // is purely for display.
+  async previewMealPackageCoverage(
+    payload: MealPackagePreviewRequest
+  ): Promise<MealPackagePreviewResponse> {
+    const response = await apiClient.post<{ success: boolean; data: MealPackagePreviewResponse }>(
+      '/orders/meal-package-preview',
+      payload
+    );
+    return response.data.data;
   },
 
   // Get all orders with pagination and filters

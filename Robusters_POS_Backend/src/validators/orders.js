@@ -19,6 +19,11 @@ const uuidParam = (paramName) =>
  * Validation rules for creating an order
  */
 const createOrderRules = [
+  body('customerId')
+    .optional()
+    .isUUID()
+    .withMessage('customerId must be a valid UUID'),
+
   body('customerPhone')
     .optional()
     .isMobilePhone()
@@ -73,6 +78,16 @@ const createOrderRules = [
     .isLength({ max: 500 })
     .withMessage('Special instructions must be less than 500 characters'),
 
+  body('items.*.customUnitPrice')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('customUnitPrice must be a non-negative number'),
+
+  body('useMealPackage')
+    .optional()
+    .isBoolean()
+    .withMessage('useMealPackage must be a boolean'),
+
   body('paymentMethod')
     .isIn(Object.values(Order.PAYMENT_METHODS))
     .withMessage('Invalid payment method'),
@@ -82,6 +97,48 @@ const createOrderRules = [
     .trim()
     .isLength({ max: 1000 })
     .withMessage('Notes must be less than 1000 characters'),
+];
+
+/**
+ * Validation rules for previewing meal-package checkout coverage
+ */
+const previewMealPackageRules = [
+  body('customerId')
+    .optional()
+    .isUUID()
+    .withMessage('customerId must be a valid UUID'),
+
+  body('items')
+    .isArray({ min: 1 })
+    .withMessage('items must be a non-empty array'),
+
+  body('items.*.itemId')
+    .isUUID()
+    .withMessage('Item ID must be a valid UUID'),
+
+  body('items.*.quantity')
+    .isInt({ min: 1, max: 100 })
+    .withMessage('Quantity must be between 1 and 100'),
+
+  body('items.*.variantIds')
+    .optional()
+    .isArray()
+    .withMessage('Variant IDs must be an array'),
+
+  body('items.*.variantIds.*')
+    .optional()
+    .isUUID()
+    .withMessage('Variant ID must be a valid UUID'),
+
+  body('items.*.customUnitPrice')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('customUnitPrice must be a non-negative number'),
+
+  body('useMealPackage')
+    .optional()
+    .isBoolean()
+    .withMessage('useMealPackage must be a boolean'),
 ];
 
 /**
@@ -140,6 +197,7 @@ const validate = (req, res, next) => {
 module.exports = {
   uuidParam,
   createOrderRules,
+  previewMealPackageRules,
   updatePaymentStatusRules,
   cancelRequestRules,
   cancelApprovalRules,

@@ -43,6 +43,7 @@ export default function CustomersPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showProfileDialog, setShowProfileDialog] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortBy, setSortBy] = useState<'recent' | 'loyalty' | 'orders' | 'spent'>('recent');
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -297,7 +298,16 @@ export default function CustomersPage() {
                       >
                         <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
                       </Button>
-                      
+
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setEditingCustomer(customer)}
+                        className="h-8 w-8 sm:h-9 sm:w-9"
+                      >
+                        <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
+                      </Button>
+
                       <Button
                         variant="ghost"
                         size="sm"
@@ -328,6 +338,25 @@ export default function CustomersPage() {
             }}
             onCancel={() => setShowCreateDialog(false)}
           />
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Customer Dialog */}
+      <Dialog open={!!editingCustomer} onOpenChange={(open) => { if (!open) setEditingCustomer(null); }}>
+        <DialogContent className="w-[95vw] max-w-md sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-lg sm:text-xl">Edit Customer</DialogTitle>
+          </DialogHeader>
+          {editingCustomer && (
+            <CustomerForm
+              customer={editingCustomer}
+              onSuccess={() => {
+                setEditingCustomer(null);
+                toast.success('Customer updated successfully');
+              }}
+              onCancel={() => setEditingCustomer(null)}
+            />
+          )}
         </DialogContent>
       </Dialog>
 

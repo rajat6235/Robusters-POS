@@ -18,6 +18,12 @@ const { up: addSearchIndexes } = require('./migrations/013_search_indexes');
 const { up: addOrderNumberSequence } = require('./migrations/014_order_number_sequence');
 const { up: fixOrderItemsFkey } = require('./migrations/015_order_items_menu_item_fkey');
 const { up: addLoyaltyRedemption } = require('./migrations/016_loyalty_partial_redemption');
+const { createMealPackagesSchema } = require('./migrations/013_meal_packages');
+const { up: applyMealPackageFixes } = require('./migrations/017_meal_package_fixes');
+const { up: addAllowedItemMaxQuantity } = require('./migrations/018_package_allowed_item_max_quantity');
+const { up: dedupeAllowedItems } = require('./migrations/019_package_allowed_items_unique');
+const { up: createIdempotencyKeys } = require('./migrations/020_idempotency_keys');
+const { up: addOrderItemsPackageCoverage } = require('./migrations/021_order_items_package_coverage');
 
 const useSSL = process.env.DB_SSL === 'true';
 const dbName = process.env.DB_NAME || 'robusters_pos';
@@ -141,6 +147,30 @@ async function initDatabase() {
     console.log('Adding loyalty_points_redeemed to orders...');
     await addLoyaltyRedemption(pool);
     console.log('loyalty_points_redeemed column added.');
+
+    console.log('Creating meal packages tables...');
+    await pool.query(createMealPackagesSchema);
+    console.log('Meal packages tables created successfully.');
+
+    console.log('Applying meal package fixes...');
+    await applyMealPackageFixes(pool);
+    console.log('Meal package fixes applied successfully.');
+
+    console.log('Adding package allowed item max_quantity...');
+    await addAllowedItemMaxQuantity(pool);
+    console.log('package_allowed_items.max_quantity added successfully.');
+
+    console.log('De-duplicating and constraining package_allowed_items...');
+    await dedupeAllowedItems(pool);
+    console.log('package_allowed_items deduplicated and constrained successfully.');
+
+    console.log('Creating idempotency_keys table...');
+    await createIdempotencyKeys(pool);
+    console.log('idempotency_keys table created successfully.');
+
+    console.log('Adding package coverage to order_items...');
+    await addOrderItemsPackageCoverage(pool);
+    console.log('order_items.package_covered_quantity added successfully.');
 
     await pool.end();
     console.log('\nDatabase initialization complete!');

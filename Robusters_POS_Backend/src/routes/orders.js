@@ -8,10 +8,13 @@ const router = express.Router();
 
 const orderController = require('../controllers/orderController');
 const { authenticate, managerOrAdmin, adminOnly } = require('../middleware/auth');
+const { rateLimit } = require('../middleware/rateLimiter');
+const { idempotent } = require('../middleware/idempotency');
 const {
   validate,
   uuidParam,
   createOrderRules,
+  previewMealPackageRules,
   updatePaymentStatusRules,
   cancelRequestRules,
   cancelApprovalRules,
@@ -26,9 +29,26 @@ router.post(
   '/',
   authenticate,
   managerOrAdmin,
+  rateLimit({ windowMs: 60_000, max: 30, keyPrefix: 'orders-create' }),
+  idempotent('orders:create'),
   createOrderRules,
   validate,
   orderController.createOrder
+);
+
+/**
+ * @route   POST /api/orders/meal-package-preview
+ * @desc    Preview meal-package coverage for a cart before checkout
+ * @access  Private (Manager/Admin)
+ */
+router.post(
+  '/meal-package-preview',
+  authenticate,
+  managerOrAdmin,
+  rateLimit({ windowMs: 60_000, max: 60, keyPrefix: 'order-mp-preview' }),
+  previewMealPackageRules,
+  validate,
+  orderController.previewMealPackageCoverage
 );
 
 /**

@@ -7,12 +7,15 @@ import { useOrderStore, calcItemUnitPrice } from '@/hooks/useOrderStore';
 import { useLocationStore } from '@/hooks/useLocationStore';
 import { customerService, Customer } from '@/services/customerService';
 import { menuService } from '@/services/menuService';
+import { orderService, MealPackagePreviewResponse } from '@/services/orderService';
+import { useDebounce } from '@/hooks/useDebounce';
 import { CustomerForm } from '@/components/customer/CustomerForm';
 import { MenuItem, Variant, Addon, DietType } from '@/types/menu';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -24,7 +27,7 @@ import { toast } from 'sonner';
 import {
   ShoppingCart, Plus, Minus, Trash2, Search, Check, Loader2,
   User, ArrowLeft, UserPlus, SkipForward, Receipt,
-  Star, CreditCard, ChevronUp, MapPin, Pencil, X, Gift, CheckCircle
+  Star, CreditCard, ChevronUp, MapPin, Pencil, X, Gift, CheckCircle, Package
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -651,6 +654,78 @@ export default function OrdersPage() {
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
   const [editingPriceValue, setEditingPriceValue] = useState('');
 
+  // Meal package checkout coverage — live preview only; the backend
+  // recomputes and applies this authoritatively when the order is placed.
+  const [mealPackagePreview, setMealPackagePreview] = useState<MealPackagePreviewResponse | null>(null);
+  const [isLoadingMealPackagePreview, setIsLoadingMealPackagePreview] = useState(false);
+  // Lets the customer/staff opt out of auto-redemption for this order and
+  // just pay normally instead — defaults to on whenever a package applies.
+  const [useMealPackage, setUseMealPackage] = useState(true);
+  const cartSignature = useMemo(
+    () => JSON.stringify(cart.map(item => ({
+      id: item.menuItem.id,
+      q: item.quantity,
+      v: item.selectedVariants.map(v => v.id),
+      p: priceOverrides[item.id],
+    }))),
+    [cart, priceOverrides]
+  );
+  const debouncedCartSignature = useDebounce(cartSignature, 400);
+
+  useEffect(() => {
+    if (!showCheckout || cart.length === 0) {
+      setMealPackagePreview(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      setIsLoadingMealPackagePreview(true);
+      try {
+        const preview = await orderService.previewMealPackageCoverage({
+          customerId: orderCustomer?.id,
+          items: cart.map(item => ({
+            itemId: item.menuItem.id,
+            quantity: item.quantity,
+            variantIds: item.selectedVariants.map(v => v.id),
+            customUnitPrice: priceOverrides[item.id],
+          })),
+          useMealPackage,
+        });
+        if (!cancelled) setMealPackagePreview(preview);
+      } catch {
+        if (!cancelled) setMealPackagePreview(null);
+      } finally {
+        if (!cancelled) setIsLoadingMealPackagePreview(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCheckout, debouncedCartSignature, orderCustomer?.id, useMealPackage]);
+
+  // Reset to "on" whenever checkout re-opens for a (potentially new) order —
+  // an opt-out shouldn't silently carry over to an unrelated later order.
+  useEffect(() => {
+    if (showCheckout) setUseMealPackage(true);
+  }, [showCheckout]);
+
+  // If meal-package savings reduce the payable total below whatever loyalty
+  // points were already selected, pull the selection back down to fit —
+  // the <input max=...> attribute alone doesn't clamp an already-set value.
+  useEffect(() => {
+    const available = Number(orderCustomer?.loyalty_points || 0);
+    const savings = mealPackagePreview?.applied ? mealPackagePreview.totalSaved : 0;
+    const maxRedeemable = Math.min(available, Math.floor(Math.max(0, getCheckoutTotal() - savings)));
+    if (loyaltyPointsToRedeem > maxRedeemable) {
+      setLoyaltyPointsToRedeem(Math.max(0, maxRedeemable));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mealPackagePreview, cart, priceOverrides, orderCustomer]);
+
+  const mealPackageSavings = mealPackagePreview?.applied ? mealPackagePreview.totalSaved : 0;
+
   useEffect(() => {
     loadMenu();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -818,7 +893,10 @@ export default function OrdersPage() {
   const handlePlaceOrder = async () => {
     try {
       const overrides = Object.keys(priceOverrides).length > 0 ? priceOverrides : undefined;
-      const order = await createOrder(paymentMethod, orderNotes || undefined, checkoutLocationId || undefined, overrides, loyaltyPointsToRedeem || undefined);
+      const order = await createOrder(paymentMethod, orderNotes || undefined, checkoutLocationId || undefined, overrides, loyaltyPointsToRedeem || undefined, useMealPackage);
+      if (order.mealPackageFallback) {
+        toast.warning("This customer's meal package ran out just before checkout — order was placed at full price instead.");
+      }
       setShowCheckout(false);
       setShowCart(false);
       setLoyaltyPointsToRedeem(0);
@@ -826,6 +904,7 @@ export default function OrdersPage() {
       setOrderNotes('');
       setCheckoutLocationId(null);
       setPriceOverrides({});
+      setMealPackagePreview(null);
       setPlacedOrder(order);
       setStep('success');
     } catch (error: any) {
@@ -863,6 +942,21 @@ export default function OrdersPage() {
               </p>
             )}
           </div>
+          {placedOrder?.mealPackageRedemption && (
+            <div className="text-left border rounded-lg p-3 bg-green-500/5 border-green-500/30 space-y-1">
+              <p className="text-sm font-medium flex items-center gap-1.5">
+                <Package className="h-3.5 w-3.5 text-green-600" />
+                {placedOrder.mealPackageRedemption.packageName}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {placedOrder.mealPackageRedemption.mealsUsed} meal{placedOrder.mealPackageRedemption.mealsUsed === 1 ? '' : 's'} redeemed
+                {' — '}₹{Number(placedOrder.mealPackageRedemption.totalSaved).toFixed(0)} saved
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {placedOrder.mealPackageRedemption.remainingMeals} meal{placedOrder.mealPackageRedemption.remainingMeals === 1 ? '' : 's'} remaining on this package
+              </p>
+            </div>
+          )}
           <div className="flex flex-col gap-3">
             <Button className="w-full h-12 text-base" onClick={handleStartNewOrder}>
               <ShoppingCart className="h-4 w-4 mr-2" />
@@ -1282,7 +1376,7 @@ export default function OrdersPage() {
       </Dialog>
 
       {/* Checkout Dialog */}
-      <Dialog open={showCheckout} onOpenChange={(open) => { setShowCheckout(open); if (!open) setLoyaltyPointsToRedeem(0); }}>
+      <Dialog open={showCheckout} onOpenChange={(open) => { setShowCheckout(open); if (!open) { setLoyaltyPointsToRedeem(0); setMealPackagePreview(null); } }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1351,7 +1445,7 @@ export default function OrdersPage() {
               {/* Loyalty Points Partial Redemption */}
               {orderCustomer && (() => {
                 const available = Number(orderCustomer.loyalty_points || 0);
-                const checkoutTotal = getCheckoutTotal();
+                const checkoutTotal = Math.max(0, getCheckoutTotal() - mealPackageSavings);
                 const maxRedeemable = Math.min(available, Math.floor(checkoutTotal));
                 if (available <= 0) return null;
                 return (
@@ -1416,6 +1510,52 @@ export default function OrdersPage() {
               })()}
             </div>
 
+            {/* Meal Package Coverage */}
+            {orderCustomer && isLoadingMealPackagePreview && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground border rounded-lg p-3">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Checking meal package coverage...
+              </div>
+            )}
+            {orderCustomer && !isLoadingMealPackagePreview && mealPackagePreview?.applied && (
+              <div className="space-y-2 border rounded-lg p-3 bg-green-500/5 border-green-500/30">
+                <div className="flex items-center justify-between gap-2">
+                  <label htmlFor="use-meal-package" className="text-sm font-medium flex items-center gap-1.5">
+                    <Package className="h-3.5 w-3.5 text-green-600" />
+                    {mealPackagePreview.package?.name}
+                  </label>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs text-muted-foreground">
+                      {mealPackagePreview.remainingMealsAfter} meal{mealPackagePreview.remainingMealsAfter === 1 ? '' : 's'} left after this order
+                    </span>
+                    <Switch id="use-meal-package" checked={useMealPackage} onCheckedChange={setUseMealPackage} />
+                  </div>
+                </div>
+                <p className="text-xs text-green-700">
+                  {mealPackagePreview.mealsWillBeUsed} meal{mealPackagePreview.mealsWillBeUsed === 1 ? '' : 's'} will be redeemed —{' '}
+                  <span className="font-medium">−₹{mealPackagePreview.totalSaved.toFixed(0)} saved</span>
+                </p>
+              </div>
+            )}
+            {orderCustomer && !isLoadingMealPackagePreview && mealPackagePreview?.reason === 'declined' && (
+              <div className="flex items-center justify-between gap-2 border rounded-lg p-3">
+                <label htmlFor="use-meal-package" className="text-sm flex items-center gap-1.5 text-muted-foreground">
+                  <Package className="h-3.5 w-3.5" />
+                  Not using {mealPackagePreview.package?.name}
+                  {!!mealPackagePreview.wouldHaveSaved && ` — would save ₹${mealPackagePreview.wouldHaveSaved.toFixed(0)}`}
+                </label>
+                <Switch id="use-meal-package" checked={useMealPackage} onCheckedChange={setUseMealPackage} />
+              </div>
+            )}
+            {orderCustomer && !isLoadingMealPackagePreview && !mealPackagePreview?.applied && mealPackagePreview?.reason && ['expired', 'exhausted', 'no_matching_items'].includes(mealPackagePreview.reason) && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground border rounded-lg p-3">
+                <Package className="h-3.5 w-3.5 shrink-0" />
+                {mealPackagePreview.reason === 'expired' && "This customer's meal package has expired."}
+                {mealPackagePreview.reason === 'exhausted' && "This customer's meal package has no meals remaining."}
+                {mealPackagePreview.reason === 'no_matching_items' && "None of these items are covered by the customer's meal package."}
+              </div>
+            )}
+
             {/* Order Notes */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Notes (optional)</label>
@@ -1428,12 +1568,13 @@ export default function OrdersPage() {
 
             {/* Order Summary */}
             <div className="border-t pt-4 space-y-3">
-              {cart.map((item) => {
+              {cart.map((item, cartIndex) => {
                 const calculatedUnitPrice = calcItemUnitPrice(item);
                 const hasOverride = priceOverrides[item.id] !== undefined;
                 const effectiveUnitPrice = hasOverride ? priceOverrides[item.id] : calculatedUnitPrice;
                 const isEditingPrice = editingPriceId === item.id;
                 const availableVariants = item.menuItem.variants || [];
+                const coverageForItem = mealPackagePreview?.applied ? mealPackagePreview.items[cartIndex] : undefined;
 
                 return (
                   <div key={item.id} className="bg-muted/30 rounded-lg p-3 space-y-2">
@@ -1444,6 +1585,14 @@ export default function OrdersPage() {
                         {item.addonSelections.length > 0 && (
                           <p className="text-xs text-muted-foreground mt-0.5">
                             + {item.addonSelections.map(a => a.addon.name).join(', ')}
+                          </p>
+                        )}
+                        {coverageForItem?.covered && (
+                          <p className="text-xs text-green-600 font-medium mt-0.5 flex items-center gap-1">
+                            <Package className="h-3 w-3" />
+                            Covered by Meal Package
+                            {coverageForItem.coveredQty < coverageForItem.quantity &&
+                              ` (${coverageForItem.coveredQty} of ${coverageForItem.quantity})`}
                           </p>
                         )}
                       </div>
@@ -1508,6 +1657,13 @@ export default function OrdersPage() {
                             <X className="h-3.5 w-3.5" />
                           </button>
                         )}
+                        <button
+                          className="text-muted-foreground hover:text-destructive transition-colors p-0.5"
+                          onClick={() => removeFromCart(item.id)}
+                          title="Remove item"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     </div>
 
@@ -1555,6 +1711,15 @@ export default function OrdersPage() {
                   <span>Subtotal</span>
                   <span>₹{getCheckoutTotal().toFixed(0)}</span>
                 </div>
+                {mealPackageSavings > 0 && (
+                  <div className="flex justify-between text-sm text-green-600">
+                    <span className="flex items-center gap-1">
+                      <Package className="h-3 w-3" />
+                      Meal package savings
+                    </span>
+                    <span>−₹{mealPackageSavings.toFixed(0)}</span>
+                  </div>
+                )}
                 {loyaltyPointsToRedeem > 0 && (
                   <div className="flex justify-between text-sm text-green-600">
                     <span className="flex items-center gap-1">
@@ -1566,16 +1731,16 @@ export default function OrdersPage() {
                 )}
                 <div className="flex justify-between font-bold text-lg pt-1 border-t">
                   <span>Total Payable</span>
-                  <span>₹{Math.max(0, getCheckoutTotal() - loyaltyPointsToRedeem).toFixed(0)}</span>
+                  <span>₹{Math.max(0, getCheckoutTotal() - mealPackageSavings - loyaltyPointsToRedeem).toFixed(0)}</span>
                 </div>
               </div>
             </div>
           </div>
           <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button variant="outline" onClick={() => setShowCheckout(false)} className="w-full sm:w-auto">Cancel</Button>
-            <Button onClick={handlePlaceOrder} disabled={orderLoading} className="w-full sm:w-auto">
+            <Button onClick={handlePlaceOrder} disabled={orderLoading || isLoadingMealPackagePreview} className="w-full sm:w-auto">
               {orderLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Place Order — ₹{Math.max(0, getCheckoutTotal() - loyaltyPointsToRedeem).toFixed(0)}
+              Place Order — ₹{Math.max(0, getCheckoutTotal() - mealPackageSavings - loyaltyPointsToRedeem).toFixed(0)}
             </Button>
           </DialogFooter>
         </DialogContent>
