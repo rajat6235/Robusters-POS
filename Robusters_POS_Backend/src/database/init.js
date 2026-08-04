@@ -24,6 +24,7 @@ const { up: addAllowedItemMaxQuantity } = require('./migrations/018_package_allo
 const { up: dedupeAllowedItems } = require('./migrations/019_package_allowed_items_unique');
 const { up: createIdempotencyKeys } = require('./migrations/020_idempotency_keys');
 const { up: addOrderItemsPackageCoverage } = require('./migrations/021_order_items_package_coverage');
+const { up: dedupeCustomerPackages } = require('./migrations/022_customer_meal_packages_unique_active');
 
 const useSSL = process.env.DB_SSL === 'true';
 const dbName = process.env.DB_NAME || 'robusters_pos';
@@ -171,6 +172,10 @@ async function initDatabase() {
     console.log('Adding package coverage to order_items...');
     await addOrderItemsPackageCoverage(pool);
     console.log('order_items.package_covered_quantity added successfully.');
+
+    console.log('De-duplicating and constraining customer_meal_packages...');
+    await dedupeCustomerPackages(pool);
+    console.log('customer_meal_packages deduplicated and constrained successfully.');
 
     await pool.end();
     console.log('\nDatabase initialization complete!');

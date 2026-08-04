@@ -45,6 +45,19 @@ const assignPackage = async (req, res, next) => {
       throw new BadRequestError('Cannot assign inactive package');
     }
 
+    // A customer can only have one active package at a time, regardless of
+    // which package — assigning a new one while another is still active
+    // (unfinished, uncancelled) is a mistake far more often than a genuine
+    // "stack two packages" request, and has caused real duplicate/competing
+    // assignments in the past.
+    const { packages: existingActive } = await CustomerPackage.findByCustomer(customerId, { status: 'active', limit: 1 });
+    if (existingActive.length > 0) {
+      const existing = existingActive[0];
+      throw new ConflictError(
+        `This customer already has an active package: "${existing.package_name}" (${existing.remaining_meals} meal(s) remaining). Complete or cancel it before assigning a new one.`
+      );
+    }
+
     const finalTotalMeals = totalMeals || package.meal_count;
     const finalConsumedMeals = consumedMeals || 0;
     const finalPackagePrice = packagePrice !== undefined ? packagePrice : package.price;
@@ -509,6 +522,21 @@ const bulkAssignPackages = async (req, res, next) => {
 
     if (!Array.isArray(assignments) || assignments.length === 0) {
       throw new BadRequestError('Assignments array is required and must not be empty');
+    }
+
+    // Same "one active package per customer" rule as the single-assign
+    // path — check both against what's already in the DB and against the
+    // batch assigning the same customer twice.
+    const customerIds = assignments.map((a) => a.customerId);
+    const dupeInBatch = customerIds.find((id, i) => customerIds.indexOf(id) !== i);
+    if (dupeInBatch) {
+      throw new BadRequestError('This batch assigns more than one package to the same customer.');
+    }
+    const alreadyActive = await CustomerPackage.getCustomersWithActivePackage(customerIds);
+    if (alreadyActive.length > 0) {
+      throw new ConflictError(
+        `${alreadyActive.length} customer(s) in this batch already have an active package assigned.`
+      );
     }
 
     // Add assignedBy to all assignments

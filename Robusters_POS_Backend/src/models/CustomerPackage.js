@@ -46,21 +46,31 @@ const assign = async ({
   assignedBy,
   notes
 }) => {
-  const result = await db.query(
-    `INSERT INTO customer_meal_packages (
-      customer_id, package_id, total_meals, consumed_meals,
-      package_price, amount_paid, payment_status,
-      starts_at, expires_at, assigned_by, notes
-    )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-    RETURNING *`,
-    [
-      customerId, packageId, totalMeals, consumedMeals,
-      packagePrice, amountPaid, paymentStatus,
-      startsAt, expiresAt, assignedBy, notes
-    ]
-  );
-  return result.rows[0];
+  try {
+    const result = await db.query(
+      `INSERT INTO customer_meal_packages (
+        customer_id, package_id, total_meals, consumed_meals,
+        package_price, amount_paid, payment_status,
+        starts_at, expires_at, assigned_by, notes
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      RETURNING *`,
+      [
+        customerId, packageId, totalMeals, consumedMeals,
+        packagePrice, amountPaid, paymentStatus,
+        startsAt, expiresAt, assignedBy, notes
+      ]
+    );
+    return result.rows[0];
+  } catch (error) {
+    // Only one *active* assignment of a given package per customer is
+    // allowed at a time (idx_customer_package_active_unique) — a finished
+    // or cancelled one doesn't count, so they can be reassigned it later.
+    if (error.code === '23505' && error.constraint === 'idx_customer_package_active_unique') {
+      throw new ConflictError('This customer already has an active assignment for this package.');
+    }
+    throw error;
+  }
 };
 
 /**
@@ -435,6 +445,21 @@ const getActiveCount = async (customerId) => {
 };
 
 /**
+ * Which of the given customer ids already have an active package —
+ * used by bulk assignment to reject a batch that would violate the
+ * one-active-package-per-customer rule instead of partially applying it.
+ */
+const getCustomersWithActivePackage = async (customerIds) => {
+  const result = await db.query(
+    `SELECT DISTINCT customer_id
+     FROM customer_meal_packages
+     WHERE status = 'active' AND customer_id = ANY($1::uuid[])`,
+    [customerIds]
+  );
+  return result.rows.map((r) => r.customer_id);
+};
+
+/**
  * Get all active packages.
  * Returns a true total plus a true sum/avg across the *entire* matching set
  * (not just the current page) via window functions, so dashboard KPI tiles
@@ -549,6 +574,9 @@ const bulkAssign = async (assignments) => {
     return result.rows;
   } catch (error) {
     await client.query('ROLLBACK');
+    if (error.code === '23505' && error.constraint === 'idx_customer_package_active_unique') {
+      throw new ConflictError('One or more customers in this batch already have an active assignment for that package.');
+    }
     throw error;
   } finally {
     client.release();
@@ -616,6 +644,7 @@ module.exports = {
   getConsumptionHistory,
   getExpiringPackages,
   getActiveCount,
+  getCustomersWithActivePackage,
   getAllActive,
   findAll,
   getAllOrders,

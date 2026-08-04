@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useForm, Controller } from 'react-hook-form';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useDebounce } from '@/hooks/useDebounce';
 import { ArrowLeft, UserPlus, Package, Search, X } from 'lucide-react';
@@ -31,6 +31,7 @@ import { customerService } from '@/services/customerService';
 
 export default function AssignPackagePage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   // Stable per page-load — a retried submit (double-click, timeout) reuses
   // this key so the backend can dedupe it into a single assignment.
   const [idempotencyKey] = useState(() => crypto.randomUUID());
@@ -48,6 +49,7 @@ export default function AssignPackagePage() {
     handleSubmit,
     watch,
     setValue,
+    getValues,
     control,
     formState: { errors },
   } = useForm({
@@ -68,7 +70,6 @@ export default function AssignPackagePage() {
 
   const totalMeals = watch('totalMeals');
   const consumedMeals = watch('consumedMeals');
-  const packagePrice = watch('packagePrice');
 
   // Calculate remaining meals
   useEffect(() => {
@@ -131,6 +132,7 @@ export default function AssignPackagePage() {
       setValue('packageId', packageId, { shouldValidate: true });
       setValue('totalMeals', pkg.meal_count.toString(), { shouldValidate: true });
       setValue('packagePrice', Number(pkg.price).toString(), { shouldValidate: true });
+      setValue('amountPaid', Number(pkg.price).toString(), { shouldValidate: true });
 
       // Calculate expiry if validity_days is set
       if (pkg.validity_days) {
@@ -147,7 +149,11 @@ export default function AssignPackagePage() {
     mutationFn: (data: any) => MealPackageService.assignPackage(data, idempotencyKey),
     onSuccess: () => {
       toast.success('Package assigned successfully!');
-      router.push('/meal-packages');
+      // The dashboard is a separate page/query — invalidate explicitly so
+      // it doesn't show a stale list (missing this new assignment) if it's
+      // already cached from an earlier visit.
+      queryClient.invalidateQueries({ queryKey: ['package-dashboard'] });
+      router.push('/meal-packages/dashboard');
     },
     onError: (error: any) => {
       toast.error(error?.response?.data?.message || 'Failed to assign package');
@@ -431,7 +437,11 @@ export default function AssignPackagePage() {
                   {...register('consumedMeals', {
                     min: { value: 0, message: 'Cannot be negative' },
                     validate: (value) =>
-                      (parseInt(value) || 0) <= (parseInt(totalMeals) || 0) ||
+                      // getValues(), not the watch()'d `totalMeals` closure —
+                      // when both fields are set together via setValue()
+                      // (e.g. picking a package), this can otherwise
+                      // validate against a stale pre-selection value.
+                      (parseInt(value) || 0) <= (parseInt(getValues('totalMeals')) || 0) ||
                       'Cannot exceed total meals',
                   })}
                 />
@@ -487,7 +497,13 @@ export default function AssignPackagePage() {
                   {...register('amountPaid', {
                     min: { value: 0, message: 'Must be non-negative' },
                     validate: (value) =>
-                      (parseFloat(value) || 0) <= (parseFloat(packagePrice) || 0) ||
+                      // getValues(), not the watch()'d `packagePrice` closure —
+                      // handlePackageChange sets packagePrice and amountPaid
+                      // back-to-back via setValue(), so amountPaid's
+                      // validator can otherwise run before this render's
+                      // packagePrice closure has updated, comparing against
+                      // a stale (often empty) value and wrongly failing.
+                      (parseFloat(value) || 0) <= (parseFloat(getValues('packagePrice')) || 0) ||
                       'Cannot exceed package price',
                   })}
                 />
